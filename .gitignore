@@ -38,3 +38,9 @@ Thumbs.db
 
 #dotCover
 *.dotCover
+
+out/
+bin/
+.idea/
+project.lock.json
+*

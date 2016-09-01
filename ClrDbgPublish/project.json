@@ -1,0 +1,46 @@
+﻿{
+  "version": "1.0.0-*",
+  "buildOptions": {
+    "emitEntryPoint": true
+  },
+  "dependencies": {
+                "Microsoft.VisualStudio.clrdbg": "15.0.25626-preview-3219185",
+                "Microsoft.VisualStudio.clrdbg.MIEngine": "14.0.30822-preview-1",
+                "Microsoft.VisualStudio.OpenDebugAD7": "1.0.20822-preview-1",
+                "NETStandard.Library": "1.6.0",
+                "Newtonsoft.Json": "7.0.1",
+                "Microsoft.VisualStudio.Debugger.Interop.Portable": "1.0.1",
+                "System.Collections.Specialized": "4.0.1",
+                "System.Collections.Immutable": "1.2.0",
+                "System.Diagnostics.Process": "4.1.0",
+                "System.Dynamic.Runtime": "4.0.11",
+                "Microsoft.CSharp": "4.0.1",
+                "System.Threading.Tasks.Dataflow": "4.6.0",
+                "System.Threading.Thread": "4.0.0",
+                "System.Xml.XDocument": "4.0.11",
+                "System.Xml.XmlDocument": "4.0.1",
+                "System.Xml.XmlSerializer": "4.0.11",
+                "System.ComponentModel": "4.0.1",
+                "System.ComponentModel.Annotations": "4.1.0",
+                "System.ComponentModel.EventBasedAsync": "4.0.11",
+                "System.Runtime.Serialization.Primitives": "4.1.1",
+                "System.Net.Http": "4.1.0",
+                "Microsoft.NetCore.DotNetHostPolicy": "1.0.1"
+  },
+  "frameworks": {
+    "netcoreapp1.0": {
+      "imports": ["dnxcore50",  "portable-net45+win8"]
+    }
+  },
+  "runtimes" : {
+          "win7-x64" : {},
+          "osx.10.11-x64": {},
+          "centos.7-x64": {},
+          "fedora.23-x64": {},
+          "opensuse.13.2-x64": {},
+          "rhel.7-x64": {},
+          "debian.8-x64": {},
+          "ubuntu.14.04-x64": {},
+          "ubuntu.16.04-x64": {}
+      }
+}
