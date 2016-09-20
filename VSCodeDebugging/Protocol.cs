@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json.Linq;
 
 namespace VSCodeDebug
 {
@@ -635,55 +636,140 @@ namespace VSCodeDebug
 		}
 	}
 
-	// ---- Events -------------------------------------------------------------------------
+	// ---- Events Bodies -------------------------------------------------------------------------
 
-	public class InitializedEvent : Event
+	public class EventBody
 	{
-		public InitializedEvent()
-			: base("initialized") { }
+		public static IDictionary<string, Type> EventTypeMap = new Dictionary<string, Type>
+		{
+			{"initialized", typeof(InitializedEventBody)},
+			{"stopped", typeof(StoppedEventBody)},
+			{"continued", typeof(ContinuedEventBody)},
+			{"exited", typeof(ExitedEventBody)},
+			{"terminated", typeof(TerminatedEventBody)},
+			{"thread", typeof(ThreadEventBody)},
+			{"output", typeof(OutputEventBody)},
+			{"breakpoint", typeof(BreakpointEventBody)},
+			{"module", typeof(ModuleEventBody)},
+		};
+		// base class for event bodies to deserialize events into typed object
 	}
 
-	public class StoppedEvent : Event
+	/** Event message for "initialized" event type.
+	This event indicates that the debug adapter is ready to accept configuration requests (e.g. SetBreakpointsRequest, SetExceptionBreakpointsRequest).
+	A debug adapter is expected to send this event when it is ready to accept configuration requests (but not before the InitializeRequest has finished).
+	The sequence of events/requests is as follows:
+	- adapters sends InitializedEvent (after the InitializeRequest has returned)
+	- frontend sends zero or more SetBreakpointsRequest
+	- frontend sends one SetFunctionBreakpointsRequest
+	- frontend sends a SetExceptionBreakpointsRequest if one or more exceptionBreakpointFilters have been defined (or if supportsConfigurationDoneRequest is not defined or false)
+	- frontend sends other future configuration requests
+	- frontend sends one ConfigurationDoneRequest to indicate the end of the configuration
+	*/
+	public class InitializedEventBody : EventBody
 	{
-		public StoppedEvent(int tid, string reasn, string txt = null)
-			: base("stopped", new {
-				threadId = tid,
-				reason = reasn,
-				text = txt
-			})
-		{ }
 	}
 
-	public class ExitedEvent : Event
+	public class StoppedEventBody : EventBody
 	{
-		public ExitedEvent(int exCode)
-			: base("exited", new { exitCode = exCode }) { }
+		public int threadId { get; set; }
+		public string reason { get; set; }
+		public string text { get; set; }
+		public bool allThreadsStopped { get; set; }
 	}
 
-	public class TerminatedEvent : Event
+	public class ContinuedEventBody : EventBody
 	{
-		public TerminatedEvent()
-			: base("terminated") { }
+		/** The thread which was continued. */
+		public int threadId { get; set; }
+		/** If allThreadsContinued is true, a debug adapter can announce that all threads have continued. **/
+		public bool allThreadsContinued { get; set; }
 	}
 
-	public class ThreadEvent : Event
+	public class ExitedEventBody : EventBody
 	{
-		public ThreadEvent(string reasn, int tid)
-			: base("thread", new {
-				reason = reasn,
-				threadId = tid
-			})
-		{ }
+		public int exitCode { get; set; }
 	}
 
-	public class OutputEvent : Event
+	public class TerminatedEventBody : EventBody
 	{
-		public OutputEvent(string cat, string outpt)
-			: base("output", new {
-				category = cat,
-				output = outpt
-			})
-		{ }
+		/** A debug adapter may set 'restart' to true to request that the front end restarts the session. */
+		public bool restart { get; set; }
+	}
+
+	public class ThreadEventBody : EventBody
+	{
+		public int threadId { get; set; }
+		public string reason { get; set; }
+	}
+
+	public class OutputEventBody : EventBody
+	{
+		public string output { get; set; }
+		public string category { get; set; }
+		public string data { get; set; }
+	}
+
+	public class Breakpoint
+	{
+		/** An optional unique identifier for the breakpoint. */
+		public int? id;
+		/** If true breakpoint could be set (but not necessarily at the desired location).  */
+		public bool verified { get; set; }
+		/** An optional message about the state of the breakpoint. This is shown to the user and can be used to explain why a breakpoint could not be verified. */
+		public string message { get; set; }
+		/** The source where the breakpoint is located. */
+		public Source source { get; set; }
+		/** The start line of the actual range covered by the breakpoint. */
+		public int? line { get; set; }
+		/** An optional start column of the actual range covered by the breakpoint. */
+		public int? column { get; set; }
+		/** An optional end line of the actual range covered by the breakpoint. */
+		public int? endLine { get; set; }
+		/**  An optional end column of the actual range covered by the breakpoint. If no end line is given, then the end column is assumed to be in the start line. */
+		public int? endColumn { get; set; }
+	}
+
+	public class Module {
+		/** Unique identifier for the module. */
+		public string id { get; set; }
+		/** A name of the module. */
+		public string name { get; set; }
+		/** Logical full path to the module. The exact definition is implementation defined, but usually this would be a full path to the on-disk file for the module. */
+		public string path { get; set; }
+		/** True if the module is optimized. */
+		public bool isOptimized { get; set; }
+		/** True if the module is considered 'user code' by a debugger that supports 'Just My Code'. */
+		public bool isUserCode { get; set; }
+		/** Version of Module. */
+		public string version { get; set; }
+		/** User understandable description of if symbols were found for the module (ex: 'Symbols Loaded', 'Symbols not found', etc */
+		public string symbolStatus { get; set; }
+		/** Logical full path to the symbol file. The exact definition is implementation defined. */
+		public string symbolFilePath { get; set; }
+		/** Module created or modified. */
+		public string dateTimeStamp { get; set; }
+		/** Address range covered by this module. */
+		public string addressRange { get; set; }
+	}
+
+	/** Event message for "breakpoint" event type.
+	The event indicates that some information about a breakpoint has changed.
+	*/
+	public class BreakpointEventBody : EventBody
+	{
+		/** The reason for the event (such as: 'changed', 'new'). */
+		public string reason { get; set; }
+		/** The breakpoint. */
+		public Breakpoint breakpoint { get; set; }
+	}
+
+	public class ModuleEventBody : EventBody
+	{
+		/** The reason for the event. */
+		public string reason { get; set; } //'new' | 'changed' | 'removed';
+		/** The new, changed, or removed module. In case of 'removed' only the module id is used. */
+		public Module module { get; set; }
 	}
 
 	// ---- Response -------------------------------------------------------------------------
@@ -848,10 +934,10 @@ namespace VSCodeDebug
 
 	public class ProtocolClient : ProtocolEndpoint
 	{
-		Dictionary<int, Request> Requests = new Dictionary<int, Request>();
+		readonly Dictionary<int, Request> Requests = new Dictionary<int, Request>();
 		protected override void Dispatch(string message)
 		{
-			var jObject = Newtonsoft.Json.Linq.JObject.Parse(message);
+			var jObject = JObject.Parse(message);
 			var type = jObject.Value<string>("type");
 			if (type == "response") {
 				var success = jObject.Value<bool>("success");
@@ -864,12 +950,25 @@ namespace VSCodeDebug
 				}
 				//if (Trace.HasFlag(TraceLevel.Responses))
 				//	Console.Error.WriteLine(string.Format("R {0}: {1}", response.command, JsonConvert.SerializeObject(response.body)));
-			} else if (type == "event") {
-				OnEvent?.Invoke(JsonConvert.DeserializeObject<Event>(message));
+			} else if (type == "event")
+			{
+				var eventBodyJObject = jObject.GetValue("body");
+				var eventTypeString = eventBodyJObject.Value<string>("type");
+				Type eventType;
+
+				if (EventBody.EventTypeMap.TryGetValue(eventTypeString, out eventType))
+				{
+					var eventBody = (EventBody)eventBodyJObject.ToObject(eventType);
+					OnEvent?.Invoke(eventBody);
+				}
+				else
+				{
+					throw new ArgumentOutOfRangeException(string.Format("Unknown event type: {0}", type));
+				}
 			}
 		}
 
-		public Action<Event> OnEvent;
+		public Action<EventBody> OnEvent;
 
 		public Task<T2> SendRequestAsync<T1, T2>(Request<T1, T2> request) where T2 : new()
 		{
@@ -955,12 +1054,15 @@ namespace VSCodeDebug
 
 						_bodyLength = -1;
 						var str = Encoding.GetString(buf);
-						Task.Run(() => {
+
+						try
+						{
 							Dispatch(str);
-						}).ContinueWith(t => {
-							if (t.IsFaulted)
-								Console.WriteLine(t.Exception);
-						});
+						}
+						catch (Exception e)
+						{
+							Console.WriteLine(e);
+						}
 
 						continue;   // there may be more complete messages to process
 					}

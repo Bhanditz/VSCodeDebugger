@@ -8,6 +8,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using Mono.Debugging.Backend;
+using Breakpoint = Mono.Debugging.Client.Breakpoint;
 
 namespace VSCodeDebugger
 {
@@ -74,7 +75,7 @@ namespace VSCodeDebugger
 			return threads;
 		}
 
-		Dictionary<BreakEvent, BreakEventInfo> breakpoints = new Dictionary<BreakEvent, BreakEventInfo>();
+		readonly Dictionary<BreakEvent, BreakEventInfo> breakpoints = new Dictionary<BreakEvent, BreakEventInfo>();
 
 		protected override BreakEventInfo OnInsertBreakEvent(BreakEvent breakEvent)
 		{
@@ -299,49 +300,79 @@ namespace VSCodeDebugger
 			return new Backtrace(new VSCodeDebuggerBacktrace(this, threadId));
 		}
 
-		void HandleAction(VSCodeDebug.Event obj)
+		void HandleEvent(EventBody eventBody)
 		{
-			switch (obj.eventType) {
-				case "initialized":
-					//OnStarted();
-					break;
-				case "stopped":
-					TargetEventArgs args;
-					switch ((string)obj.body.reason) {
-						case "breakpoint":
-							args = new TargetEventArgs(TargetEventType.TargetHitBreakpoint);
-							var bp = breakpoints.Select(b => b.Key).OfType<Breakpoint>().FirstOrDefault(b => b.FileName == (string)obj.body.source.path && b.Line == (int)obj.body.line);
-							if (bp == null) {
-								OnContinue();
-								return;
-							}
-							args.BreakEvent = bp;
-							break;
-						case "step":
-						case "pause":
-							args = new TargetEventArgs(TargetEventType.TargetStopped);
-							break;
-						case "exception":
-							args = new TargetEventArgs(TargetEventType.ExceptionThrown);
-							break;
-						default:
-							throw new NotImplementedException((string)obj.body.reason);
+			if (eventBody is InitializedEventBody)
+			{
+				//OnStarted();
+			}
+			else if (eventBody is BreakpointEventBody)
+			{
+				var breakpointEvent = (BreakpointEventBody)eventBody;
+				var debuggerBreakpoint = breakpointEvent.breakpoint;
+				var foundBreakpoint = breakpoints.Keys.OfType<Breakpoint>().FirstOrDefault(breakpoint => breakpoint.FileName == debuggerBreakpoint.source.path
+																										&& breakpoint.Line == (debuggerBreakpoint.line ?? -1));
+				if (foundBreakpoint != null)
+				{
+					var breakEventInfo = breakpoints[foundBreakpoint];
+					if (debuggerBreakpoint.verified)
+					{
+						breakEventInfo.SetStatus(BreakEventStatus.Bound, "");
 					}
-					currentThreadId = (long)obj.body.threadId;
-					args.Process = OnGetProcesses()[0];
-					args.Thread = GetThread(args.Process, (long)obj.body.threadId);
-					args.Backtrace = GetThreadBacktrace((long)obj.body.threadId);
+					else
+					{
+						breakEventInfo.SetStatus(BreakEventStatus.NotBound, debuggerBreakpoint.message);
+					}
 
-					OnTargetEvent(args);
-					break;
-				case "terminated":
-					OnTargetEvent(new TargetEventArgs(TargetEventType.TargetExited));
-					break;
-				case "exited":
-					OnTargetEvent(new TargetEventArgs(TargetEventType.TargetExited) {
-						ExitCode = (int)obj.body.exitCode
-					});
-					break;
+					breakEventInfo.AdjustBreakpointLocation(debuggerBreakpoint.line ?? foundBreakpoint.Line, debuggerBreakpoint.column?? foundBreakpoint.Column);
+				}
+			}
+			else if (eventBody is StoppedEventBody)
+			{
+				var stoppedEvent = (StoppedEventBody)eventBody;
+				TargetEventArgs args;
+				switch (stoppedEvent.reason) {
+					case "breakpoint":
+						args = new TargetEventArgs(TargetEventType.TargetHitBreakpoint);
+						Breakpoint bp = null;//breakpoints.Select(b => b.Key).OfType<Breakpoint>()
+							//.FirstOrDefault(b => b.FileName == (string)eventBody.body.source.path && b.Line == (int)eventBody.body.line);
+						if (bp == null) {
+							OnContinue();
+							return;
+						}
+						//args.BreakEvent = bp;
+						break;
+					case "step":
+					case "pause":
+						args = new TargetEventArgs(TargetEventType.TargetStopped);
+						break;
+					case "exception":
+						args = new TargetEventArgs(TargetEventType.ExceptionThrown);
+						break;
+					default:
+						throw new NotImplementedException(stoppedEvent.reason);
+				}
+				currentThreadId = stoppedEvent.threadId;
+				args.Process = OnGetProcesses()[0];
+				args.Thread = GetThread(args.Process, stoppedEvent.threadId);
+				args.Backtrace = GetThreadBacktrace(stoppedEvent.threadId);
+				args.IsStopEvent = true;
+
+				OnTargetEvent(args);
+			}
+			else if (eventBody is ExitedEventBody)
+			{
+				var exitedEvent = (ExitedEventBody)eventBody;
+				var targetEventArgs = new TargetEventArgs(TargetEventType.TargetExited)
+				{
+					ExitCode = exitedEvent.exitCode
+				};
+				OnTargetEvent(targetEventArgs);
+			}
+			else if (eventBody is TerminatedEventBody)
+			{
+				//var terminatedEvent = (TerminatedEventBody)eventBody;
+				OnTargetEvent(new TargetEventArgs(TargetEventType.TargetExited));
 			}
 		}
 
@@ -379,16 +410,17 @@ namespace VSCodeDebugger
 
 		void StartDebugAgent()
 		{
-			var startInfo = new ProcessStartInfo(Path.Combine(Path.GetDirectoryName(typeof(VSCodeDebuggerSession).Assembly.Location), "CoreClrAdaptor", "OpenDebugAD7"));
+			var startInfo = new ProcessStartInfo(Path.Combine(Path.GetDirectoryName(typeof(VSCodeDebuggerSession).Assembly.Location), "CoreClrAdaptor", "OpenDebugAD7.exe"));
 			startInfo.RedirectStandardOutput = true;
 			startInfo.RedirectStandardInput = true;
 			startInfo.StandardOutputEncoding = Encoding.UTF8;
 			startInfo.StandardOutputEncoding = Encoding.UTF8;
 			startInfo.UseShellExecute = false;
-			startInfo.EnvironmentVariables["PATH"] = "/usr/local/share/dotnet:" + Environment.GetEnvironmentVariable("PATH");
+		  startInfo.Arguments = "--trace=response --engineLogging=VSDebugLog.log";
+			startInfo.EnvironmentVariables["PATH"] = Environment.GetEnvironmentVariable("PATH") + "C:\\Program Files\\dotnet;";
 			debugAgentProcess = Process.Start(startInfo);
 			protocolClient = new ProtocolClient();
-			protocolClient.OnEvent += HandleAction;
+			protocolClient.OnEvent += HandleEvent;
 			protocolClient.Start(debugAgentProcess.StandardOutput.BaseStream, debugAgentProcess.StandardInput.BaseStream)
 						  .ContinueWith((task) => {
 							  if (task.IsFaulted) {
