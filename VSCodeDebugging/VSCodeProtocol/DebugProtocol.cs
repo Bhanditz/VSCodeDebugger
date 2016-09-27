@@ -2,17 +2,15 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-using System;
-using System.Text;
-using System.IO;
-using System.Threading.Tasks;
-using System.Text.RegularExpressions;
-using Newtonsoft.Json;
-using System.Collections.Generic;
-using System.Linq;
-using Newtonsoft.Json.Linq;
 
-namespace VSCodeDebug
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+
+namespace VSCodeDebugging.VSCodeProtocol
 {
 	public class ProtocolMessage
 	{
@@ -904,81 +902,6 @@ namespace VSCodeDebug
 	}
 
 
-	///*
-	//    * The ProtocolServer can be used to implement a server that uses the VSCode debug protocol.
-	//    */
-	//public abstract class ProtocolServer : ProtocolEndpoint
-	//{
-	//	protected abstract void DispatchRequest(string command, dynamic args, Response response);
-
-	//	protected override void Dispatch(string message)
-	//	{
-	//		var request = JsonConvert.DeserializeObject<Request>(message);
-	//		if (request != null && request.type == "request") {
-	//			if (Trace.HasFlag(TraceLevel.Requests))
-	//				Console.Error.WriteLine(string.Format("C {0}: {1}", request.command, JsonConvert.SerializeObject(request.arguments)));
-
-	//			var response = new Response(request);
-
-	//			DispatchRequest(request.command, request.arguments, response);
-
-	//			SendMessage(response);
-	//		}
-	//	}
-
-	//	public void SendEvent(Event e)
-	//	{
-	//		SendMessage(e);
-	//	}
-	//}
-
-	public class ProtocolClient : ProtocolEndpoint
-	{
-		readonly Dictionary<int, Request> Requests = new Dictionary<int, Request>();
-		protected override void Dispatch(string message)
-		{
-			var jObject = JObject.Parse(message);
-			var type = jObject.Value<string>("type");
-			if (type == "response") {
-				var success = jObject.Value<bool>("success");
-				var request_seq = jObject.Value<int>("request_seq");
-				var request = Requests[request_seq];
-				if (success) {
-					request.ObjectBody = jObject.GetValue("body").ToObject(request.GetResponseBodyType());
-				} else {
-					request.ErrorMessage = jObject.Value<string>("message");
-				}
-				//if (Trace.HasFlag(TraceLevel.Responses))
-				//	Console.Error.WriteLine(string.Format("R {0}: {1}", response.command, JsonConvert.SerializeObject(response.body)));
-			} else if (type == "event")
-			{
-				var eventBodyJObject = jObject.GetValue("body");
-				var eventTypeString = eventBodyJObject.Value<string>("type");
-				Type eventType;
-
-				if (EventBody.EventTypeMap.TryGetValue(eventTypeString, out eventType))
-				{
-					var eventBody = (EventBody)eventBodyJObject.ToObject(eventType);
-					OnEvent?.Invoke(eventBody);
-				}
-				else
-				{
-					throw new ArgumentOutOfRangeException(string.Format("Unknown event type: {0}", type));
-				}
-			}
-		}
-
-		public Action<EventBody> OnEvent;
-
-		public Task<T2> SendRequestAsync<T1, T2>(Request<T1, T2> request) where T2 : new()
-		{
-			request.seq = _sequenceNumber++;
-			Requests.Add(request.seq, request);
-			SendMessage(request);
-			return request.WaitingResponse.Task;
-		}
-	}
-
 	[Flags]
 	public enum TraceLevel
 	{
@@ -989,178 +912,5 @@ namespace VSCodeDebug
 		All = 7
 	}
 
-	public abstract class ProtocolEndpoint
-	{
-		public TraceLevel Trace = TraceLevel.None;
-
-		protected const int BUFFER_SIZE = 4096;
-		protected const string TWO_CRLF = "\r\n\r\n";
-		protected static readonly Regex CONTENT_LENGTH_MATCHER = new Regex(@"Content-Length: (\d+)");
-
-		protected static readonly Encoding Encoding = System.Text.Encoding.UTF8;
-
-		protected int _sequenceNumber;
-
-		private Stream _outputStream;
-
-		private ByteBuffer _rawData;
-		private int _bodyLength;
-
-		private bool _stopRequested;
-
-
-		public ProtocolEndpoint()
-		{
-			_sequenceNumber = 1;
-			_bodyLength = -1;
-			_rawData = new ByteBuffer();
-		}
-
-		public async Task Start(Stream inputStream, Stream outputStream)
-		{
-			_outputStream = outputStream;
-
-			byte[] buffer = new byte[BUFFER_SIZE];
-
-			_stopRequested = false;
-			while (!_stopRequested) {
-				var read = await inputStream.ReadAsync(buffer, 0, buffer.Length);
-
-				if (read == 0) {
-					// end of stream
-					break;
-				}
-
-				if (read > 0) {
-					_rawData.Append(buffer, read);
-					ProcessData();
-				}
-			}
-		}
-
-		public void Stop()
-		{
-			_stopRequested = true;
-		}
-
-		// ---- private ------------------------------------------------------------------------
-
-		private void ProcessData()
-		{
-			while (true) {
-				if (_bodyLength >= 0) {
-					if (_rawData.Length >= _bodyLength) {
-						var buf = _rawData.RemoveFirst(_bodyLength);
-
-						_bodyLength = -1;
-						var str = Encoding.GetString(buf);
-
-						try
-						{
-							Dispatch(str);
-						}
-						catch (Exception e)
-						{
-							Console.WriteLine(e);
-						}
-
-						continue;   // there may be more complete messages to process
-					}
-				} else {
-					string s = _rawData.GetString(Encoding);
-					var idx = s.IndexOf(TWO_CRLF, StringComparison.Ordinal);
-					if (idx != -1) {
-						Match m = CONTENT_LENGTH_MATCHER.Match(s);
-						if (m.Success && m.Groups.Count == 2) {
-							_bodyLength = Convert.ToInt32(m.Groups[1].ToString());
-
-							_rawData.RemoveFirst(idx + TWO_CRLF.Length);
-
-							continue;   // try to handle a complete message
-						}
-					}
-				}
-				break;
-			}
-		}
-
-		protected abstract void Dispatch(string message);
-
-		protected void SendMessage(ProtocolMessage message)
-		{
-
-			if (Trace.HasFlag(TraceLevel.Responses) && message.type == "response") {
-				Console.Error.WriteLine(string.Format(" R: {0}", JsonConvert.SerializeObject(message)));
-			}
-			if (Trace.HasFlag(TraceLevel.Requests) && message.type == "request") {
-				Console.Error.WriteLine(string.Format(" Q: {0}", JsonConvert.SerializeObject(message)));
-			}
-			if (Trace.HasFlag(TraceLevel.Events) && message.type == "event") {
-				Event e = (Event)message;
-				Console.Error.WriteLine(string.Format("E {0}: {1}", e.eventType, JsonConvert.SerializeObject(e.body)));
-			}
-
-			var data = ConvertToBytes(message);
-			try {
-				_outputStream.Write(data, 0, data.Length);
-				_outputStream.Flush();
-			} catch (Exception) {
-				// ignore
-			}
-		}
-
-		private static byte[] ConvertToBytes(ProtocolMessage request)
-		{
-			var asJson = JsonConvert.SerializeObject(request);
-			byte[] jsonBytes = Encoding.GetBytes(asJson);
-
-			string header = string.Format("Content-Length: {0}{1}", jsonBytes.Length, TWO_CRLF);
-			byte[] headerBytes = Encoding.GetBytes(header);
-
-			byte[] data = new byte[headerBytes.Length + jsonBytes.Length];
-			System.Buffer.BlockCopy(headerBytes, 0, data, 0, headerBytes.Length);
-			System.Buffer.BlockCopy(jsonBytes, 0, data, headerBytes.Length, jsonBytes.Length);
-
-			return data;
-		}
-	}
-
 	//--------------------------------------------------------------------------------------
-
-	class ByteBuffer
-	{
-		private byte[] _buffer;
-
-		public ByteBuffer()
-		{
-			_buffer = new byte[0];
-		}
-
-		public int Length {
-			get { return _buffer.Length; }
-		}
-
-		public string GetString(Encoding enc)
-		{
-			return enc.GetString(_buffer);
-		}
-
-		public void Append(byte[] b, int length)
-		{
-			byte[] newBuffer = new byte[_buffer.Length + length];
-			System.Buffer.BlockCopy(_buffer, 0, newBuffer, 0, _buffer.Length);
-			System.Buffer.BlockCopy(b, 0, newBuffer, _buffer.Length, length);
-			_buffer = newBuffer;
-		}
-
-		public byte[] RemoveFirst(int n)
-		{
-			byte[] b = new byte[n];
-			System.Buffer.BlockCopy(_buffer, 0, b, 0, n);
-			byte[] newBuffer = new byte[_buffer.Length - n];
-			System.Buffer.BlockCopy(_buffer, n, newBuffer, 0, _buffer.Length - n);
-			_buffer = newBuffer;
-			return b;
-		}
-	}
 }

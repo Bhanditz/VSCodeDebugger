@@ -2,13 +2,14 @@
 using Mono.Debugging.Client;
 using System.Diagnostics;
 using System.Text;
-using VSCodeDebug;
 using System.Threading.Tasks;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using Mono.Debugging.Backend;
+using VSCodeDebugging.VSCodeProtocol;
 using Breakpoint = Mono.Debugging.Client.Breakpoint;
+using StackFrame = VSCodeDebugging.VSCodeProtocol.StackFrame;
 
 namespace VSCodeDebugger
 {
@@ -130,7 +131,7 @@ namespace VSCodeDebugger
 		{
 			long threadId;
 			VSCodeDebuggerSession vsCodeDebuggerSession;
-			VSCodeDebug.StackFrame[] frames;
+			StackFrame[] frames;
 			Mono.Debugging.Client.StackFrame[] stackFrames;
 
 			public VSCodeDebuggerBacktrace(VSCodeDebuggerSession vsCodeDebuggerSession, long threadId)
