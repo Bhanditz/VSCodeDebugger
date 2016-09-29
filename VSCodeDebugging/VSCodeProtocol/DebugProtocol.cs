@@ -622,18 +622,6 @@ namespace VSCodeDebugging.VSCodeProtocol
 		}
 	}
 
-	public class BreakpointStatus
-	{
-		public bool verified { get; }
-		public int line { get; }
-
-		public BreakpointStatus(bool verified, int line)
-		{
-			this.verified = verified;
-			this.line = line;
-		}
-	}
-
 	// ---- Events Bodies -------------------------------------------------------------------------
 
 	public class EventBody
@@ -705,13 +693,13 @@ namespace VSCodeDebugging.VSCodeProtocol
 	{
 		public string output { get; set; }
 		public string category { get; set; }
-		public string data { get; set; }
+		public object data { get; set; }
 	}
 
 	public class Breakpoint
 	{
 		/** An optional unique identifier for the breakpoint. */
-		public int? id;
+		public int? id { get; set; }
 		/** If true breakpoint could be set (but not necessarily at the desired location).  */
 		public bool verified { get; set; }
 		/** An optional message about the state of the breakpoint. This is shown to the user and can be used to explain why a breakpoint could not be verified. */
@@ -774,25 +762,39 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 	public class Capabilities : ResponseBody
 	{
-		public bool supportsConfigurationDoneRequest;
-		public bool supportsFunctionBreakpoints;
-		public bool supportsConditionalBreakpoints;
-		public bool supportsEvaluateForHovers;
-		public ExceptionBreakpointsFilter[] exceptionBreakpointFilters;
+		/** The debug adapter supports the configurationDoneRequest. */
+		public bool supportsConfigurationDoneRequest { get; set; }
+		/** The debug adapter supports functionBreakpoints. */
+		public bool supportsFunctionBreakpoints { get; set; }
+		/** The debug adapter supports conditionalBreakpoints. */
+		public bool supportsConditionalBreakpoints  { get; set; }
+		/** The debug adapter supports a (side effect free) evaluate request for data hovers. */
+		public bool supportsEvaluateForHovers { get; set; }
+		/** Available filters for the setExceptionBreakpoints request. */
+		public ExceptionBreakpointsFilter[] exceptionBreakpointFilters { get; set; }
+		/** The debug adapter supports stepping back. */
+		public bool supportsStepBack { get; set; }
+		/** The debug adapter supports setting a variable to a value. */
+		public bool supportsSetVariable { get; set; }
+		/** The debug adapter supports restarting a frame. */
+		public bool supportsRestartFrame { get; set; }
+		/** The debug adapter supports the gotoTargetsRequest. */
+		public bool supportsGotoTargetsRequest { get; set; }
+		/** The debug adapter supports the stepInTargetsRequest. */
+		public bool supportsStepInTargetsRequest { get; set; }
+		/** The debug adapter supports the completionsRequest. */
+		public bool supportsCompletionsRequest { get; set; }
 	}
 
 	/** An ExceptionBreakpointsFilter is shown in the UI as an option for configuring how exceptions are dealt with. */
 	public class ExceptionBreakpointsFilter
 	{
 		/** The internal ID of the filter. This value is passed to the setExceptionBreakpoints request. */
-		[JsonProperty("filter")]
-		public string Filter { get; set; }
+		public string filter { get; set; }
 		/** The name of the filter. This will be shown in the UI. */
-		[JsonProperty("label")]
-		public string Label { get; set; }
+		public string label { get; set; }
 		/** Initial value of the filter. If not specified a value 'false' is assumed. */
-		[JsonProperty("default", NullValueHandling = NullValueHandling.Ignore)]
-		public bool? Default { get; set; }
+		public bool @default { get; set; }
 	}
 
 	public class ErrorResponseBody : ResponseBody
@@ -885,19 +887,19 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 	public class SetBreakpointsResponseBody : ResponseBody
 	{
-		public BreakpointStatus[] breakpoints { get; set; }
+		public Breakpoint[] breakpoints { get; set; }
 
 		public SetBreakpointsResponseBody()
 		: this(null)
 		{
 		}
 
-		public SetBreakpointsResponseBody(List<BreakpointStatus> bpts)
+		public SetBreakpointsResponseBody(List<Breakpoint> bpts)
 		{
 			if (bpts == null)
-				breakpoints = new BreakpointStatus[0];
+				breakpoints = new Breakpoint[0];
 			else
-				breakpoints = bpts.ToArray<BreakpointStatus>();
+				breakpoints = bpts.ToArray<Breakpoint>();
 		}
 	}
 

@@ -6,9 +6,11 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Mono.Debugging.Backend;
 using VSCodeDebugging.VSCodeProtocol;
 using Breakpoint = Mono.Debugging.Client.Breakpoint;
+using VSBreakpoint = VSCodeDebugging.VSCodeProtocol.Breakpoint;
 using StackFrame = VSCodeDebugging.VSCodeProtocol.StackFrame;
 
 namespace VSCodeDebugger
@@ -33,11 +35,26 @@ namespace VSCodeDebugger
 			protocolClient.SendRequestAsync(new DisconnectRequest()).Wait();
 		}
 
+		protected override void OnUpdateBreakEvent(BreakEventInfo eventInfo)
+		{
+		}
+
 		protected override void OnEnableBreakEvent(BreakEventInfo eventInfo, bool enable)
 		{
-			eventInfo.BreakEvent.Enabled = enable;
-			UpdateExceptions();
-			UpdateBreakpoints();
+			lock (breakpointsSync) {
+				var breakEvent = eventInfo.BreakEvent;
+				if (breakEvent == null)
+					return;
+				if (breakEvent is Breakpoint)
+				{
+					var breakpoint = (Breakpoint)breakEvent;
+					UpdatePositionalBreakpoints(breakpoint.FileName);
+				}
+				else if (breakEvent is Catchpoint)
+				{
+					UpdateExceptions();
+				}
+			}
 		}
 
 		protected override void OnExit()
@@ -76,31 +93,56 @@ namespace VSCodeDebugger
 			return threads;
 		}
 
-		readonly Dictionary<BreakEvent, BreakEventInfo> breakpoints = new Dictionary<BreakEvent, BreakEventInfo>();
+		class PathComparer : EqualityComparer<string>
+		{
+			public override bool Equals(string x, string y)
+			{
+				return BreakpointStore.FileNameEquals(x, y);
+			}
+
+			public override int GetHashCode(string obj)
+			{
+				if (obj != null)
+					return obj.GetHashCode();
+				throw new ArgumentNullException("obj");
+			}
+		}
+
+		static readonly EqualityComparer<string> pathComparer = new PathComparer();
+
+
+		readonly object breakpointsSync = new object();
+		readonly Dictionary<BreakEvent, BreakEventInfo> breakEventToInfo = new Dictionary<BreakEvent, BreakEventInfo>();
+		// we have to track bp ids per document because we have no event on breakpoint removing from debugger. so we just replace all of the breakpoints for specified document
+		readonly Dictionary<string, Dictionary<int, Breakpoint>> idToDocumentBreakEvent = new Dictionary<string, Dictionary<int, Breakpoint>>(pathComparer);
+
 
 		protected override BreakEventInfo OnInsertBreakEvent(BreakEvent breakEvent)
 		{
-			if (breakEvent is Breakpoint) {
-				var breakEventInfo = new BreakEventInfo();
-				breakpoints.Add((Breakpoint)breakEvent, breakEventInfo);
-				UpdateBreakpoints();
-				return breakEventInfo;
-			} else if (breakEvent is Catchpoint) {
-				var catchpoint = (Catchpoint)breakEvent;
-				var breakEventInfo = new BreakEventInfo();
-				breakpoints.Add(breakEvent, breakEventInfo);
-				UpdateExceptions();
-				return breakEventInfo;
+			lock (breakpointsSync) {
+				var newBreakEventInfo = new BreakEventInfo();
+				breakEventToInfo[breakEvent] = newBreakEventInfo;
+				if (breakEvent is Breakpoint) {
+					var breakpoint = (Breakpoint)breakEvent;
+					UpdatePositionalBreakpoints(breakpoint.FileName);
+					return newBreakEventInfo;
+				}
+				if (breakEvent is Catchpoint) {
+					var catchpoint = (Catchpoint)breakEvent;
+					UpdateExceptions();
+					return newBreakEventInfo;
+				}
+				throw new NotImplementedException(breakEvent.GetType().FullName);
 			}
-			throw new NotImplementedException(breakEvent.GetType().FullName);
 		}
 
 		void UpdateExceptions()
 		{
-			var hasCustomExceptions = breakpoints.Select(b => b.Key).OfType<Catchpoint>().Any();
-			protocolClient.SendRequestAsync(new SetExceptionBreakpointsRequest(new SetExceptionBreakpointsArguments {
-				filters = Capabilities.exceptionBreakpointFilters.Where(f => hasCustomExceptions || (f.Default ?? false)).Select(f => f.Filter).ToArray()
-			}));
+			// TODO
+//			var catchpoints = Breakpoints.GetCatchpoints().Where(catchpoint => catchpoint.Enabled);
+//			protocolClient.SendRequestAsync(new SetExceptionBreakpointsRequest(new SetExceptionBreakpointsArguments {
+//				filters = Capabilities.exceptionBreakpointFilters.Where(f => hasCustomExceptions || (f.Default ?? false)).Select(f => f.Filter).ToArray()
+//			}));
 		}
 
 		protected override void OnNextInstruction()
@@ -119,9 +161,22 @@ namespace VSCodeDebugger
 
 		protected override void OnRemoveBreakEvent(BreakEventInfo eventInfo)
 		{
-			breakpoints.Remove(breakpoints.Single(b => b.Value == eventInfo).Key);
-			UpdateBreakpoints();
-			UpdateExceptions();
+			lock (breakpointsSync)
+			{
+				var originalBreakEvent = eventInfo.BreakEvent;
+				if (originalBreakEvent == null)
+					return;
+				breakEventToInfo.Remove(originalBreakEvent);
+				if (originalBreakEvent is Breakpoint)
+				{
+					var breakpoint = (Breakpoint)originalBreakEvent;
+					UpdatePositionalBreakpoints(breakpoint.FileName);
+				}
+				else if (originalBreakEvent is Catchpoint)
+				{
+					UpdateExceptions();
+				}
+			}
 		}
 
 		Process debugAgentProcess;
@@ -309,24 +364,43 @@ namespace VSCodeDebugger
 			}
 			else if (eventBody is BreakpointEventBody)
 			{
-				var breakpointEvent = (BreakpointEventBody)eventBody;
-				var debuggerBreakpoint = breakpointEvent.breakpoint;
-				var foundBreakpoint = breakpoints.Keys.OfType<Breakpoint>().FirstOrDefault(breakpoint => breakpoint.FileName == debuggerBreakpoint.source.path
-																										&& breakpoint.Line == (debuggerBreakpoint.line ?? -1));
-				if (foundBreakpoint != null)
+				var breakpointEventBody = (BreakpointEventBody)eventBody;
+				var responseBreakpoint = breakpointEventBody.breakpoint;
+				var id = responseBreakpoint.id ?? -1;
+				if (id == -1) {
+					//OnDebuggerOutput(true, "Breakpoint has no id");
+					return;
+				}
+				var source = responseBreakpoint.source;
+				if (source == null) {
+					//OnDebuggerOutput(true, "No source specified for breakpoint");
+					return;
+				}
+				if (source.path == null) {
+					//OnDebuggerOutput(true, "No source path specified for breakpoint");
+					return;
+				}
+				Breakpoint breakpoint;
+				BreakEventInfo info;
+
+				lock (breakpointsSync)
 				{
-					var breakEventInfo = breakpoints[foundBreakpoint];
-					if (debuggerBreakpoint.verified)
-					{
-						breakEventInfo.SetStatus(BreakEventStatus.Bound, "");
+					Dictionary<int, Breakpoint> idToBreakpoint;
+					if (!idToDocumentBreakEvent.TryGetValue(source.path, out idToBreakpoint)) {
+						OnDebuggerOutput(true, string.Format("No breakpoints for document: {0}", source.path));
+						return;
 					}
-					else
-					{
-						breakEventInfo.SetStatus(BreakEventStatus.NotBound, debuggerBreakpoint.message);
+					if (!idToBreakpoint.TryGetValue(id, out breakpoint)) {
+						//OnDebuggerOutput(true, string.Format("No breakpoint with id {0} in document {1}", id, source.path));
+						return;
 					}
 
-					breakEventInfo.AdjustBreakpointLocation(debuggerBreakpoint.line ?? foundBreakpoint.Line, debuggerBreakpoint.column?? foundBreakpoint.Column);
+					if (!breakEventToInfo.TryGetValue(breakpoint, out info)) {
+						OnDebuggerOutput(true, string.Format("No break event for breakpoint {0}", breakpoint));
+						return;
+					}
 				}
+				UpdateBreakEventInfoFromProtocolBreakpoint(info, breakpoint, responseBreakpoint);
 			}
 			else if (eventBody is StoppedEventBody)
 			{
@@ -386,27 +460,64 @@ namespace VSCodeDebugger
 			return null;
 		}
 
-		void UpdateBreakpoints()
+		void UpdatePositionalBreakpoints(string filename)
 		{
-			var bks = breakpoints.Select(b => b.Key).OfType<Breakpoint>().GroupBy(b => b.FileName).ToArray();
-			foreach (var sourceFile in bks) {
-				protocolClient.SendRequestAsync(new SetBreakpointsRequest(new SetBreakpointsRequestArguments {
-					Source = new Source(sourceFile.Key),
-					Breakpoints = sourceFile.Select(b => new SourceBreakpoint {
-						Line = b.Line,
-						Column = b.Column,
-						Condition = b.ConditionExpression
-					}).ToList()
-				})).ContinueWith(t => {
-					if (t.IsFaulted)
-						return;
-					for (int i = 0; i < t.Result.breakpoints.Length; i++) {
-						breakpoints[sourceFile.ElementAt(i)].SetStatus(t.Result.breakpoints[i].verified ? BreakEventStatus.Bound : BreakEventStatus.NotBound, "");
-						if (t.Result.breakpoints[i].line != sourceFile.ElementAt(i).OriginalLine)
-							breakpoints[sourceFile.ElementAt(i)].AdjustBreakpointLocation(t.Result.breakpoints[i].line, 1);
+			var breakpointsForFile = Breakpoints.GetBreakpointsAtFile(filename).Where(bp => bp.Enabled).ToList();
+			protocolClient.SendRequestAsync(new SetBreakpointsRequest(new SetBreakpointsRequestArguments
+			{
+				Source = new Source(filename),
+				Breakpoints = breakpointsForFile.Select(bp => new SourceBreakpoint
+				{
+					Line = bp.Line,
+					Column = bp.Column,
+					Condition = bp.ConditionExpression
+				}).ToList()
+			})).ContinueWith(t =>
+			{
+				if (t.IsFaulted)
+					return;
+				var response = t.Result;
+				if (response.breakpoints.Length != breakpointsForFile.Count)
+				{
+					OnDebuggerOutput(true, string.Format("Debugger returned {0} breakpoints but was requested to set {1}",
+						response.breakpoints.Length, breakpointsForFile.Count));
+					return;
+				}
+				lock (breakpointsSync) {
+					if (!idToDocumentBreakEvent.ContainsKey(filename)) {
+						idToDocumentBreakEvent[filename] = new Dictionary<int, Breakpoint>();
 					}
-				});
-			}
+					var idToBreakEventForDocument = idToDocumentBreakEvent[filename];
+					idToBreakEventForDocument.Clear();
+					for (int i = 0; i < response.breakpoints.Length; i++) {
+						var breakpoint = breakpointsForFile[i];
+						BreakEventInfo info;
+						if (!breakEventToInfo.TryGetValue(breakpoint, out info)) {
+							OnDebuggerOutput(false, string.Format("Can't update status for breakpoint {0} {1} {2} because it isn't actual",
+								breakpoint.FileName, breakpoint.Line, breakpoint.Column));
+							continue;
+						}
+						var responseBreakpoint = response.breakpoints[i];
+						UpdateBreakEventInfoFromProtocolBreakpoint(info, breakpoint, responseBreakpoint);
+						var id = responseBreakpoint.id ?? -1;
+						if (id != -1) {
+							idToBreakEventForDocument[id] = breakpoint;
+						}
+						else {
+							OnDebuggerOutput(true, string.Format("Debugger returned breakpoint without id. File {0}, line {1}, column {2}",
+								breakpoint.FileName, breakpoint.Line, breakpoint.Column));
+						}
+					}
+				}
+			});
+		}
+
+		void UpdateBreakEventInfoFromProtocolBreakpoint(BreakEventInfo breakEventInfo, Breakpoint breakpoint,
+			VSBreakpoint responseBreakpoint)
+		{
+			breakEventInfo.SetStatus(responseBreakpoint.verified ? BreakEventStatus.Bound : BreakEventStatus.NotBound, responseBreakpoint.message ?? "");
+			breakEventInfo.AdjustBreakpointLocation(responseBreakpoint.column ?? breakpoint.Line, responseBreakpoint.column ?? breakpoint.Column);
+			breakEventInfo.Handle = responseBreakpoint;
 		}
 
 		void StartDebugAgent()
@@ -417,17 +528,16 @@ namespace VSCodeDebugger
 			startInfo.StandardOutputEncoding = Encoding.UTF8;
 			startInfo.StandardOutputEncoding = Encoding.UTF8;
 			startInfo.UseShellExecute = false;
-		  startInfo.Arguments = "--trace=response --engineLogging=VSDebugLog.log";
+			startInfo.Arguments = "--trace=response --engineLogging=VSDebugLog.log";
 			startInfo.EnvironmentVariables["PATH"] = Environment.GetEnvironmentVariable("PATH") + "C:\\Program Files\\dotnet;";
-			debugAgentProcess = Process.Start(startInfo);
+			debugAgentProcess = new Process { StartInfo = startInfo };
 			protocolClient = new ProtocolClient();
 			protocolClient.OnEvent += HandleEvent;
-			protocolClient.Start(debugAgentProcess.StandardOutput.BaseStream, debugAgentProcess.StandardInput.BaseStream)
-						  .ContinueWith((task) => {
-							  if (task.IsFaulted) {
-								  Console.WriteLine(task.Exception);
-							  }
-						  });
+			protocolClient.DispatchException += ProtocolClientOnException;
+			protocolClient.ReceiveException += ProtocolClientOnException;
+			protocolClient.SendException += ProtocolClientOnException;
+			debugAgentProcess.Start();
+			protocolClient.Start(debugAgentProcess.StandardOutput.BaseStream, debugAgentProcess.StandardInput.BaseStream);
 			var initRequest = new InitializeRequest(new InitializeRequestArguments() {
 				adapterID = "coreclr",
 				linesStartAt1 = true,
@@ -436,6 +546,12 @@ namespace VSCodeDebugger
 			});
 			Capabilities = protocolClient.SendRequestAsync(initRequest).Result;
 		}
+
+		void ProtocolClientOnException(object sender, ThreadExceptionEventArgs threadExceptionEventArgs)
+		{
+			HandleException(threadExceptionEventArgs.Exception);
+		}
+
 		Capabilities Capabilities;
 
 		protected override void OnRun(DebuggerStartInfo startInfo)
@@ -448,7 +564,8 @@ namespace VSCodeDebugger
 				Request = "launch",
 				PreLaunchTask = "build",
 				Program = startInfo.Command,
-				Args = startInfo.Arguments.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries),
+				// for test purposes
+				Args = new[] {"C:\\Users\\Artem.Bukhonov\\RiderProjects\\DotNetCoreConsoleApplication\\DotNetCoreConsoleApplication\\bin\\Debug\\netcoreapp1.0\\DotNetCoreConsoleApplication.dll"},//startInfo.Arguments.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries),
 				Cwd = cwd,
 				NoDebug = false,
 				StopAtEntry = false
@@ -487,13 +604,6 @@ namespace VSCodeDebugger
 			protocolClient.SendRequestAsync(new PauseRequest(new PauseRequestArguments {
 				threadId = currentThreadId
 			})).Wait();
-		}
-
-		protected override void OnUpdateBreakEvent(BreakEventInfo eventInfo)
-		{
-			breakpoints[breakpoints.Single(b => b.Value == eventInfo).Key] = eventInfo;
-			UpdateBreakpoints();
-			UpdateExceptions();
 		}
 	}
 }

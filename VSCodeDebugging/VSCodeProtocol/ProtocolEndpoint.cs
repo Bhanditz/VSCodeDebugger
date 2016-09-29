@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -10,6 +11,10 @@ namespace VSCodeDebugging.VSCodeProtocol
 	public abstract class ProtocolEndpoint
 	{
 		public TraceLevel Trace = TraceLevel.None;
+
+		public event ThreadExceptionEventHandler DispatchException = delegate { };
+		public event ThreadExceptionEventHandler SendException = delegate { };
+		public event ThreadExceptionEventHandler ReceiveException = delegate { };
 
 		protected const int BUFFER_SIZE = 4096;
 		protected const string TWO_CRLF = "\r\n\r\n";
@@ -34,26 +39,41 @@ namespace VSCodeDebugging.VSCodeProtocol
 			_rawData = new ByteBuffer();
 		}
 
-		public async Task Start(Stream inputStream, Stream outputStream)
+		public void Start(Stream inputStream, Stream outputStream)
 		{
 			_outputStream = outputStream;
 
 			byte[] buffer = new byte[BUFFER_SIZE];
 
 			_stopRequested = false;
-			while (!_stopRequested) {
-				var read = await inputStream.ReadAsync(buffer, 0, buffer.Length);
 
-				if (read == 0) {
-					// end of stream
-					break;
-				}
+			Task.Run(() => {
+				try
+				{
+					while (!_stopRequested)
+					{
 
-				if (read > 0) {
-					_rawData.Append(buffer, read);
-					ProcessData();
+						var read = inputStream.Read(buffer, 0, buffer.Length);
+
+						if (read == 0)
+						{
+							// end of stream
+							break;
+						}
+
+						if (read > 0)
+						{
+							_rawData.Append(buffer, read);
+							ProcessData();
+						}
+					}
+
 				}
-			}
+				catch (Exception e)
+				{
+					ReceiveException(this, new ThreadExceptionEventArgs(e));
+				}
+			});
 		}
 
 		public void Stop()
@@ -79,7 +99,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 						}
 						catch (Exception e)
 						{
-							Console.WriteLine(e);
+							DispatchException(this, new ThreadExceptionEventArgs(e));
 						}
 
 						continue;   // there may be more complete messages to process
@@ -106,7 +126,6 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 		protected void SendMessage(ProtocolMessage message)
 		{
-
 			if (Trace.HasFlag(TraceLevel.Responses) && message.type == "response") {
 				Console.Error.WriteLine(string.Format(" R: {0}", JsonConvert.SerializeObject(message)));
 			}
@@ -122,8 +141,8 @@ namespace VSCodeDebugging.VSCodeProtocol
 			try {
 				_outputStream.Write(data, 0, data.Length);
 				_outputStream.Flush();
-			} catch (Exception) {
-				// ignore
+			} catch (Exception e) {
+				SendException(this, new ThreadExceptionEventArgs(e));
 			}
 		}
 
