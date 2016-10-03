@@ -1,20 +1,19 @@
 ﻿using System;
-using Mono.Debugging.Client;
-using System.Diagnostics;
-using System.Text;
-using System.Threading.Tasks;
-using System.IO;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using Mono.Debugging.Backend;
+using Mono.Debugging.Client;
 using VSCodeDebugging.VSCodeProtocol;
 using Breakpoint = Mono.Debugging.Client.Breakpoint;
 using VSBreakpoint = VSCodeDebugging.VSCodeProtocol.Breakpoint;
 using VSStackFrame = VSCodeDebugging.VSCodeProtocol.StackFrame;
 using StackFrame = Mono.Debugging.Client.StackFrame;
 
-namespace VSCodeDebugger
+namespace VSCodeDebugging
 {
 	public class VSCodeDebuggerSession : DebuggerSession
 	{

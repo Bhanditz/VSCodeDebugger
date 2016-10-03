@@ -6,6 +6,7 @@ using MonoDevelop.Core;
 using MonoDevelop.Core.Assemblies;
 using MonoDevelop.Core.Execution;
 using MonoDevelop.Debugger;
+using VSCodeDebugging;
 
 namespace VSCodeDebugger
 {

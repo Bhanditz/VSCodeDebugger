@@ -31,7 +31,6 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Properties\AddinInfo.cs" />
     <Compile Include="VSCodeDebuggerEngine.cs" />
-    <Compile Include="VSCodeDebuggerSession.cs" />
     <Compile Include="StartupHandler.cs" />
   </ItemGroup>
   <ItemGroup>

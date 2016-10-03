@@ -3,6 +3,7 @@ using MonoDevelop.Components.Commands;
 using System.Diagnostics;
 using System.IO;
 using Mono.Unix.Native;
+using VSCodeDebugging;
 
 namespace VSCodeDebugger
 {
