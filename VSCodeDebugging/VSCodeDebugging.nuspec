@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<metadata xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+		<id>VSCodeDebugging</id>
+		<version>$Version$</version>
+		<title>VSCodeDebugging</title>
+		<authors>David Karlas</authors>
+		<owners>David Karlas, JetBrains</owners>
+		<licenseUrl>http://opensource.org/licenses/mit-license.php</licenseUrl>
+		<requireLicenseAcceptance>false</requireLicenseAcceptance>
+		<projectUrl>https://github.com/DavidKarlas/VSCodeDebugger</projectUrl>
+		<summary>VS code debugging protocol implementation ontop of Mono.Debugging. Allow to debug .Net core applications.</summary>
+		<description>(JetBrains fork, https://github.com/JetBrains/VSCodeDebugger) VS code debugging protocol implementation ontop of Mono.Debugging. Allow to debug .Net core applications.</description>
+		<language>en-US</language>
+		<tags>mono debugging vscode dotnet core</tags>
+		<dependencies>
+			<dependency id="ICSharpCode.NRefactory" version="[5.5.1]"/>
+		</dependencies>
+	</metadata>
+</package>
