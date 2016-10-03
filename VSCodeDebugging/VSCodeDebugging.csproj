@@ -89,6 +89,7 @@
     <Compile Include="VSCodeDebuggerSession.cs" />
     <Compile Include="VSCodeProtocol\ByteBuffer.cs" />
     <Compile Include="VSCodeProtocol\DebugProtocol.cs" />
+    <Compile Include="VSCodeProtocol\JsonUtil.cs" />
     <Compile Include="VSCodeProtocol\ProtocolClient.cs" />
     <Compile Include="VSCodeProtocol\ProtocolEndpoint.cs" />
   </ItemGroup>

@@ -39,7 +39,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 			_rawData = new ByteBuffer();
 		}
 
-		public void Start(Stream inputStream, Stream outputStream)
+		public virtual void Start(Stream inputStream, Stream outputStream)
 		{
 			_outputStream = outputStream;
 
@@ -71,7 +71,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 				}
 				catch (Exception e)
 				{
-					ReceiveException(this, new ThreadExceptionEventArgs(e));
+					OnReceiveException(new ThreadExceptionEventArgs(e));
 				}
 			});
 		}
@@ -99,7 +99,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 						}
 						catch (Exception e)
 						{
-							DispatchException(this, new ThreadExceptionEventArgs(e));
+							OnDispatchException(new ThreadExceptionEventArgs(e));
 						}
 
 						continue;   // there may be more complete messages to process
@@ -142,7 +142,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 				_outputStream.Write(data, 0, data.Length);
 				_outputStream.Flush();
 			} catch (Exception e) {
-				SendException(this, new ThreadExceptionEventArgs(e));
+				OnSendException(new ThreadExceptionEventArgs(e));
 			}
 		}
 
@@ -159,6 +159,21 @@ namespace VSCodeDebugging.VSCodeProtocol
 			System.Buffer.BlockCopy(jsonBytes, 0, data, headerBytes.Length, jsonBytes.Length);
 
 			return data;
+		}
+
+		protected virtual void OnDispatchException(ThreadExceptionEventArgs e)
+		{
+			DispatchException(this, e);
+		}
+
+		protected virtual void OnSendException(ThreadExceptionEventArgs e)
+		{
+			SendException(this, e);
+		}
+
+		protected virtual void OnReceiveException(ThreadExceptionEventArgs e)
+		{
+			ReceiveException(this, e);
 		}
 	}
 }

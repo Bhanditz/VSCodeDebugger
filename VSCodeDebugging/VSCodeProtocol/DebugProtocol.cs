@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+// ReSharper disable InconsistentNaming
 
 namespace VSCodeDebugging.VSCodeProtocol
 {
@@ -37,10 +38,10 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 		}
 		[JsonIgnore]
-		object objectBody;
+		ResponseBody objectBody;
 
 		[JsonIgnore]
-		public object ObjectBody {
+		public ResponseBody ObjectBody {
 			get {
 				return objectBody;
 			}
@@ -70,20 +71,20 @@ namespace VSCodeDebugging.VSCodeProtocol
 		public abstract Type GetResponseBodyType();
 	}
 
-	public class Request<RequestArguments, ResponseBody> : Request where ResponseBody : new()
+	public class Request<TRequestArguments, TResponseBody> : Request where TResponseBody : ResponseBody, new()
 	{
 		[JsonProperty("arguments", NullValueHandling = NullValueHandling.Ignore)]
-		public RequestArguments Arguments { get; set; }
+		public TRequestArguments Arguments { get; set; }
 		[JsonIgnore]
-		public ResponseBody Response {
+		public TResponseBody Response {
 			get {
-				return (ResponseBody)ObjectBody;
+				return (TResponseBody)ObjectBody;
 			}
 		}
 
 		public override Type GetResponseBodyType()
 		{
-			return typeof(ResponseBody);
+			return typeof(TResponseBody);
 		}
 
 		protected override void ValueSet()
@@ -95,11 +96,11 @@ namespace VSCodeDebugging.VSCodeProtocol
 		}
 
 		[JsonIgnore]
-		public TaskCompletionSource<ResponseBody> WaitingResponse { get; } = new TaskCompletionSource<ResponseBody>();
+		public TaskCompletionSource<TResponseBody> WaitingResponse { get; } = new TaskCompletionSource<TResponseBody>();
 
 		public string command;
 
-		public Request(string cmd, RequestArguments args)
+		public Request(string cmd, TRequestArguments args)
 		{
 			command = cmd;
 			Arguments = args;
@@ -119,7 +120,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 		public string pathFormat { get; set; }
 	}
 
-	public class LaunchRequest : Request<LaunchRequestArguments, object>
+	public class LaunchRequest : Request<LaunchRequestArguments, ResponseBody>
 	{
 		public LaunchRequest(LaunchRequestArguments args)
 		: base("launch", args)
@@ -163,7 +164,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 		The request starts the debuggee to run again for one step.
 		penDebug will respond with a StoppedEvent (event type 'step') after running the step.
 	*/
-	public class NextRequest : Request<NextRequestArguments, object>
+	public class NextRequest : Request<NextRequestArguments, ResponseBody>
 	{
 		public NextRequest(NextRequestArguments args)
 		: base("next", args)
@@ -182,7 +183,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 		The request starts the debuggee to run again for one step.
 		The debug adapter will respond with a StoppedEvent (event type 'step') after running the step.
 	*/
-	public class StepInRequest : Request<StepInRequestArguments, object>
+	public class StepInRequest : Request<StepInRequestArguments, ResponseBody>
 	{
 		public StepInRequest(StepInRequestArguments args)
 		: base("stepIn", args)
@@ -200,7 +201,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 		The request starts the debuggee to run again for one step.
 		penDebug will respond with a StoppedEvent (event type 'step') after running the step.
 	*/
-	public class StepOutRequest : Request<StepOutRequestArguments, object>
+	public class StepOutRequest : Request<StepOutRequestArguments, ResponseBody>
 	{
 		public StepOutRequest(StepOutRequestArguments args)
 		: base("stepOut", args)
@@ -218,7 +219,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 		The request suspenses the debuggee.
 		penDebug will respond with a StoppedEvent (event type 'pause') after a successful 'pause' command.
 	*/
-	public class PauseRequest : Request<PauseRequestArguments, object>
+	public class PauseRequest : Request<PauseRequestArguments, ResponseBody>
 	{
 		public PauseRequest(PauseRequestArguments args)
 		: base("pause", args)
@@ -251,7 +252,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 		public long threadId { get; set; }
 	}
 	/** Response to "continue" request. */
-	public class ContinueResponse
+	public class ContinueResponse : ResponseBody
 	{
 		public bool? allThreadsContinued { get; set; }
 	}
@@ -312,7 +313,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 	/** SetExceptionBreakpoints request; value of command field is "setExceptionBreakpoints".
 		Enable that the debuggee stops on exceptions with a StoppedEvent (event type 'exception').
 	*/
-	public class SetExceptionBreakpointsRequest : Request<SetExceptionBreakpointsArguments, object>
+	public class SetExceptionBreakpointsRequest : Request<SetExceptionBreakpointsArguments, ResponseBody>
 	{
 		public SetExceptionBreakpointsRequest(SetExceptionBreakpointsArguments args)
 			: base("setExceptionBreakpoints", args)
@@ -354,7 +355,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 	/** ConfigurationDone request; value of command field is "configurationDone".
 	The client of the debug protocol must send this request at the end of the sequence of configuration requests (which was started by the InitializedEvent)
 */
-	public class ConfigurationDoneRequest : Request<object, object>
+	public class ConfigurationDoneRequest : Request<object, ResponseBody>
 	{
 		public ConfigurationDoneRequest()
 			: base("configurationDone", null)
@@ -364,7 +365,7 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 	/** Disconnect request; value of command field is "disconnect".
 	*/
-	public class DisconnectRequest : Request<object, object>
+	public class DisconnectRequest : Request<object, ResponseBody>
 	{
 		public DisconnectRequest()
 			: base("disconnect", null)
@@ -439,6 +440,18 @@ namespace VSCodeDebugging.VSCodeProtocol
 	/// </summary>
 	public class ResponseBody
 	{
+		public static readonly IDictionary<string, Type> CommandToType = new Dictionary<string, Type>
+		{
+			{"initialize", typeof(Capabilities)},
+			{"continue", typeof(ContinueResponse)},
+			{"evaluate", typeof(EvaluateResponseBody)},
+			{"scopes", typeof(ScopesResponseBody)},
+			{"setBreakpoints", typeof(SetBreakpointsResponseBody)},
+			{"stackTrace", typeof(StackTraceResponseBody)},
+			{"threads", typeof(ThreadsResponseBody)},
+			{"variables", typeof(VariablesResponseBody)},
+		};
+
 		// empty
 	}
 
@@ -446,8 +459,9 @@ namespace VSCodeDebugging.VSCodeProtocol
 	{
 		public bool success { get; set; }
 		public string message { get; set; }
-		public int request_seq { get; }
-		public string command { get; }
+		public int request_seq { get; set; }
+		public string command { get; set; }
+		[JsonProperty(ItemConverterType = typeof(ResponseBodyConverter))]
 		public ResponseBody body { get; set; }
 
 		public Response()
@@ -473,7 +487,11 @@ namespace VSCodeDebugging.VSCodeProtocol
 	{
 		[JsonProperty(PropertyName = "event")]
 		public string eventType { get; set; }
-		public dynamic body { get; set; }
+
+		[JsonProperty(ItemConverterType = typeof(EventBodyConverter))]
+		public EventBody body { get; set; }
+
+		public Event() : base("event") {}
 
 		public Event(string type, dynamic bdy = null) : base("event")
 		{
@@ -662,6 +680,9 @@ namespace VSCodeDebugging.VSCodeProtocol
 		public string reason { get; set; }
 		public string text { get; set; }
 		public bool allThreadsStopped { get; set; }
+		public Source source { get; set; }
+		public int? line { get; set; }
+		public int? column { get; set; }
 	}
 
 	public class ContinuedEventBody : EventBody

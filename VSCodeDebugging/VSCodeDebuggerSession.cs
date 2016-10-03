@@ -11,7 +11,8 @@ using Mono.Debugging.Backend;
 using VSCodeDebugging.VSCodeProtocol;
 using Breakpoint = Mono.Debugging.Client.Breakpoint;
 using VSBreakpoint = VSCodeDebugging.VSCodeProtocol.Breakpoint;
-using StackFrame = VSCodeDebugging.VSCodeProtocol.StackFrame;
+using VSStackFrame = VSCodeDebugging.VSCodeProtocol.StackFrame;
+using StackFrame = Mono.Debugging.Client.StackFrame;
 
 namespace VSCodeDebugger
 {
@@ -25,14 +26,16 @@ namespace VSCodeDebugger
 
 		protected override void OnContinue()
 		{
+			// was sync
 			protocolClient.SendRequestAsync(new ContinueRequest(new ContinueRequestArguments {
 				threadId = currentThreadId
-			})).Wait();
+			}));
 		}
 
 		protected override void OnDetach()
 		{
-			protocolClient.SendRequestAsync(new DisconnectRequest()).Wait();
+			// was sync
+			protocolClient.SendRequestAsync(new DisconnectRequest());
 		}
 
 		protected override void OnUpdateBreakEvent(BreakEventInfo eventInfo)
@@ -59,17 +62,20 @@ namespace VSCodeDebugger
 
 		protected override void OnExit()
 		{
-			protocolClient.SendRequestAsync(new DisconnectRequest()).Wait();
+			// was sync
+			protocolClient.SendRequestAsync(new DisconnectRequest());
 		}
 
 		protected override void OnFinish()
 		{
+			// was sync
 			protocolClient.SendRequestAsync(new StepOutRequest(new StepOutRequestArguments {
 				threadId = currentThreadId
-			})).Wait();
+			}));
 		}
 
 		ProcessInfo[] processInfo = { new ProcessInfo(1, "debugee") };
+
 		protected override ProcessInfo[] OnGetProcesses()
 		{
 			return processInfo;
@@ -82,7 +88,7 @@ namespace VSCodeDebugger
 
 		protected override ThreadInfo[] OnGetThreads(long processId)
 		{
-			var threadsResponse = protocolClient.SendRequestAsync(new ThreadsRequest()).Result;
+			var threadsResponse = protocolClient.SendRequestSync(new ThreadsRequest());
 			var threads = new ThreadInfo[threadsResponse.threads.Length];
 			for (int i = 0; i < threads.Length; i++) {
 				threads[i] = new ThreadInfo(processId,
@@ -147,16 +153,18 @@ namespace VSCodeDebugger
 
 		protected override void OnNextInstruction()
 		{
+			// was sync
 			protocolClient.SendRequestAsync(new NextRequest(new NextRequestArguments {
 				threadId = currentThreadId
-			})).Wait();
+			}));
 		}
 
 		protected override void OnNextLine()
 		{
+			// was sync
 			protocolClient.SendRequestAsync(new NextRequest(new NextRequestArguments {
 				threadId = currentThreadId
-			})).Wait();
+			}));
 		}
 
 		protected override void OnRemoveBreakEvent(BreakEventInfo eventInfo)
@@ -186,18 +194,17 @@ namespace VSCodeDebugger
 		{
 			long threadId;
 			VSCodeDebuggerSession vsCodeDebuggerSession;
-			StackFrame[] frames;
-			Mono.Debugging.Client.StackFrame[] stackFrames;
+			VSStackFrame[] frames;
 
 			public VSCodeDebuggerBacktrace(VSCodeDebuggerSession vsCodeDebuggerSession, long threadId)
 			{
 				this.vsCodeDebuggerSession = vsCodeDebuggerSession;
 				this.threadId = threadId;
-				var body = vsCodeDebuggerSession.protocolClient.SendRequestAsync(new StackTraceRequest(new StackTraceArguments {
+				var body = vsCodeDebuggerSession.protocolClient.SendRequestSync(new StackTraceRequest(new StackTraceArguments {
 					threadId = threadId,
 					startFrame = 0,
 					levels = 20
-				})).Result;
+				}));
 				frames = body.stackFrames;
 			}
 
@@ -215,13 +222,13 @@ namespace VSCodeDebugger
 			public ObjectValue[] GetAllLocals(int frameIndex, EvaluationOptions options)
 			{
 				List<ObjectValue> results = new List<ObjectValue>();
-				var scopeBody = vsCodeDebuggerSession.protocolClient.SendRequestAsync(new ScopesRequest(new ScopesArguments {
+				var scopeBody = vsCodeDebuggerSession.protocolClient.SendRequestSync(new ScopesRequest(new ScopesArguments {
 					frameId = frames[frameIndex].id
-				})).Result;
+				}));
 				foreach (var variablesGroup in scopeBody.scopes) {
-					var varibles = vsCodeDebuggerSession.protocolClient.SendRequestAsync(new VariablesRequest(new VariablesRequestArguments {
+					var varibles = vsCodeDebuggerSession.protocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
 						variablesReference = variablesGroup.variablesReference
-					})).Result;
+					}));
 					foreach (var variable in varibles.variables) {
 						results.Add(VsCodeVariableToObjectValue(vsCodeDebuggerSession, variable.name, variable.value, variable.variablesReference));
 					}
@@ -252,9 +259,9 @@ namespace VSCodeDebugger
 
 				public ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
 				{
-					var children = vsCodeDebuggerSession.protocolClient.SendRequestAsync(new VariablesRequest(new VariablesRequestArguments {
+					var children = vsCodeDebuggerSession.protocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
 						variablesReference = variablesReference
-					})).Result.variables;
+					})).variables;
 					return children.Select(c => VsCodeVariableToObjectValue(vsCodeDebuggerSession, c.name, c.value, c.variablesReference)).ToArray();
 				}
 
@@ -283,10 +290,10 @@ namespace VSCodeDebugger
 			{
 				var results = new List<ObjectValue>();
 				foreach (var expr in expressions) {
-					var responseBody = vsCodeDebuggerSession.protocolClient.SendRequestAsync(new EvaluateRequest(new EvaluateRequestArguments {
+					var responseBody = vsCodeDebuggerSession.protocolClient.SendRequestSync(new EvaluateRequest(new EvaluateRequestArguments {
 						expression = expr,
 						frameId = frames[frameIndex].id
-					})).Result;
+					}));
 					results.Add(VsCodeVariableToObjectValue(vsCodeDebuggerSession, expr, responseBody.result, responseBody.variablesReference));
 				}
 				return results.ToArray();
@@ -308,13 +315,13 @@ namespace VSCodeDebugger
 			public ObjectValue[] GetParameters(int frameIndex, EvaluationOptions options)
 			{
 				List<ObjectValue> results = new List<ObjectValue>();
-				var scopeBody = vsCodeDebuggerSession.protocolClient.SendRequestAsync(new ScopesRequest(new ScopesArguments {
+				var scopeBody = vsCodeDebuggerSession.protocolClient.SendRequestSync(new ScopesRequest(new ScopesArguments {
 					frameId = frames[frameIndex].id
-				})).Result;
+				}));
 				foreach (var variablesGroup in scopeBody.scopes) {
-					var varibles = vsCodeDebuggerSession.protocolClient.SendRequestAsync(new VariablesRequest(new VariablesRequestArguments {
+					var varibles = vsCodeDebuggerSession.protocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
 						variablesReference = variablesGroup.variablesReference
-					})).Result;
+					}));
 					foreach (var variable in varibles.variables) {
 						results.Add(ObjectValue.CreatePrimitive(null, new ObjectPath(variable.name), "unknown", new EvaluationResult(variable.value), ObjectValueFlags.None));
 					}
@@ -322,20 +329,14 @@ namespace VSCodeDebugger
 				return results.ToArray();
 			}
 
-			public Mono.Debugging.Client.StackFrame[] GetStackFrames(int firstIndex, int lastIndex)
+			public StackFrame[] GetStackFrames(int firstIndex, int lastIndex)
 			{
-				if (stackFrames == null) {
-					stackFrames = new Mono.Debugging.Client.StackFrame[Math.Min(lastIndex - firstIndex, frames.Length - firstIndex)];
-					for (int i = firstIndex; i < stackFrames.Length + firstIndex; i++) {
-						stackFrames[i] = new Mono.Debugging.Client.StackFrame(frames[i].id,
-																			 new SourceLocation(
-																			 frames[i].name,
-																			 frames[i].source?.path,
-																				 frames[i].line,
-																				 frames[i].column,
-																				 -1, -1),
-																			  "C#");
-					}
+				var maxIndex = Math.Min(lastIndex, frames.Length);
+				var stackFrames = new StackFrame[maxIndex - firstIndex];
+				for (int i = firstIndex; i < maxIndex; i++)
+				{
+					var vsFrame = frames[i];
+					stackFrames[i - firstIndex] = new StackFrame(vsFrame.id, new SourceLocation(vsFrame.name, vsFrame.source?.path, vsFrame.line, vsFrame.column, -1, -1), "C#");
 				}
 				return stackFrames;
 			}
@@ -409,13 +410,28 @@ namespace VSCodeDebugger
 				switch (stoppedEvent.reason) {
 					case "breakpoint":
 						args = new TargetEventArgs(TargetEventType.TargetHitBreakpoint);
-						Breakpoint bp = null;//breakpoints.Select(b => b.Key).OfType<Breakpoint>()
-							//.FirstOrDefault(b => b.FileName == (string)eventBody.body.source.path && b.Line == (int)eventBody.body.line);
-						if (bp == null) {
-							OnContinue();
-							return;
+						if (stoppedEvent.source == null)
+						{
+							OnDebuggerOutput(true, "No source file returned from debugger");
 						}
-						//args.BreakEvent = bp;
+						else
+						{
+							var sourcePath = stoppedEvent.source.path;
+							if (stoppedEvent.line == null)
+							{
+								OnDebuggerOutput(true, "No line specified by debugger");
+							}
+							else
+							{
+								var breakpointAtLine = Breakpoints.GetBreakpointsAtFileLine(sourcePath, stoppedEvent.line.Value);
+								var suitableBreakpoint = breakpointAtLine.FirstOrDefault();
+								if (stoppedEvent.column != null)
+								{
+									suitableBreakpoint = breakpointAtLine.FirstOrDefault(b => b.Column == stoppedEvent.column.Value) ?? suitableBreakpoint;
+								}
+								args.BreakEvent = suitableBreakpoint;
+							}
+						}
 						break;
 					case "step":
 					case "pause":
@@ -544,7 +560,7 @@ namespace VSCodeDebugger
 				columnsStartAt1 = true,
 				pathFormat = "path"
 			});
-			Capabilities = protocolClient.SendRequestAsync(initRequest).Result;
+			Capabilities = protocolClient.SendRequestSync(initRequest);
 		}
 
 		void ProtocolClientOnException(object sender, ThreadExceptionEventArgs threadExceptionEventArgs)
@@ -570,14 +586,15 @@ namespace VSCodeDebugger
 				NoDebug = false,
 				StopAtEntry = false
 			});
-			var lal = protocolClient.SendRequestAsync(launchRequest).Result;
+			var lal = protocolClient.SendRequestSync(launchRequest);
 			OnStarted();
 		}
 
 		protected override void OnStarted(ThreadInfo t)
 		{
 			base.OnStarted(t);
-			protocolClient.SendRequestAsync(new ConfigurationDoneRequest()).Wait();
+			// was sync
+			protocolClient.SendRequestAsync(new ConfigurationDoneRequest());
 		}
 
 		protected override void OnSetActiveThread(long processId, long threadId)
@@ -587,23 +604,26 @@ namespace VSCodeDebugger
 
 		protected override void OnStepInstruction()
 		{
+			// was sync
 			protocolClient.SendRequestAsync(new StepInRequest(new StepInRequestArguments {
 				threadId = currentThreadId
-			})).Wait();
+			}));
 		}
 
 		protected override void OnStepLine()
 		{
+			// was sync
 			protocolClient.SendRequestAsync(new StepInRequest(new StepInRequestArguments {
 				threadId = currentThreadId
-			})).Wait();
+			}));
 		}
 
 		protected override void OnStop()
 		{
+			// was sync
 			protocolClient.SendRequestAsync(new PauseRequest(new PauseRequestArguments {
 				threadId = currentThreadId
-			})).Wait();
+			}));
 		}
 	}
 }
