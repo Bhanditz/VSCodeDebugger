@@ -119,7 +119,8 @@ namespace VSCodeDebugging
 		readonly object breakpointsSync = new object();
 		readonly Dictionary<BreakEvent, BreakEventInfo> breakEventToInfo = new Dictionary<BreakEvent, BreakEventInfo>();
 		// we have to track bp ids per document because we have no event on breakpoint removing from debugger. so we just replace all of the breakpoints for specified document
-		readonly Dictionary<string, Dictionary<int, Breakpoint>> idToDocumentBreakEvent = new Dictionary<string, Dictionary<int, Breakpoint>>(pathComparer);
+		readonly Dictionary<int, Breakpoint> idToDocumentBreakEvent = new Dictionary<int, Breakpoint>();
+		readonly Dictionary<Breakpoint, int> breakEventToId = new Dictionary<Breakpoint, int>();
 
 
 		protected override BreakEventInfo OnInsertBreakEvent(BreakEvent breakEvent)
@@ -371,26 +372,12 @@ namespace VSCodeDebugging
 					//OnDebuggerOutput(true, "Breakpoint has no id");
 					return;
 				}
-				var source = responseBreakpoint.source;
-				if (source == null) {
-					//OnDebuggerOutput(true, "No source specified for breakpoint");
-					return;
-				}
-				if (source.path == null) {
-					//OnDebuggerOutput(true, "No source path specified for breakpoint");
-					return;
-				}
 				Breakpoint breakpoint;
 				BreakEventInfo info;
 
 				lock (breakpointsSync)
 				{
-					Dictionary<int, Breakpoint> idToBreakpoint;
-					if (!idToDocumentBreakEvent.TryGetValue(source.path, out idToBreakpoint)) {
-						OnDebuggerOutput(true, string.Format("No breakpoints for document: {0}", source.path));
-						return;
-					}
-					if (!idToBreakpoint.TryGetValue(id, out breakpoint)) {
+					if (!idToDocumentBreakEvent.TryGetValue(id, out breakpoint)) {
 						//OnDebuggerOutput(true, string.Format("No breakpoint with id {0} in document {1}", id, source.path));
 						return;
 					}
@@ -477,11 +464,12 @@ namespace VSCodeDebugging
 
 		void UpdatePositionalBreakpoints(string filename)
 		{
-			var breakpointsForFile = Breakpoints.GetBreakpointsAtFile(filename).Where(bp => bp.Enabled).ToList();
+			var allFileBreakpoints = Breakpoints.GetBreakpointsAtFile(filename).ToList();
+			var activeFileBreakpoints = allFileBreakpoints.Where(bp => bp.Enabled).ToList();
 			protocolClient.SendRequestAsync(new SetBreakpointsRequest(new SetBreakpointsRequestArguments
 			{
 				Source = new Source(filename),
-				Breakpoints = breakpointsForFile.Select(bp => new SourceBreakpoint
+				Breakpoints = activeFileBreakpoints.Select(bp => new SourceBreakpoint
 				{
 					Line = bp.Line,
 					Column = bp.Column,
@@ -492,20 +480,24 @@ namespace VSCodeDebugging
 				if (t.IsFaulted)
 					return;
 				var response = t.Result;
-				if (response.breakpoints.Length != breakpointsForFile.Count)
+				if (response.breakpoints.Length != activeFileBreakpoints.Count)
 				{
 					OnDebuggerOutput(true, string.Format("Debugger returned {0} breakpoints but was requested to set {1}",
-						response.breakpoints.Length, breakpointsForFile.Count));
+						response.breakpoints.Length, activeFileBreakpoints.Count));
 					return;
 				}
 				lock (breakpointsSync) {
-					if (!idToDocumentBreakEvent.ContainsKey(filename)) {
-						idToDocumentBreakEvent[filename] = new Dictionary<int, Breakpoint>();
+					// remove old breakpoints
+
+					foreach (var oldBreakevent in allFileBreakpoints) {
+						int oldId;
+						if (breakEventToId.TryGetValue(oldBreakevent, out oldId)) {
+							idToDocumentBreakEvent.Remove(oldId);
+							breakEventToId.Remove(oldBreakevent);
+						}
 					}
-					var idToBreakEventForDocument = idToDocumentBreakEvent[filename];
-					idToBreakEventForDocument.Clear();
 					for (int i = 0; i < response.breakpoints.Length; i++) {
-						var breakpoint = breakpointsForFile[i];
+						var breakpoint = activeFileBreakpoints[i];
 						BreakEventInfo info;
 						if (!breakEventToInfo.TryGetValue(breakpoint, out info)) {
 							OnDebuggerOutput(false, string.Format("Can't update status for breakpoint {0} {1} {2} because it isn't actual",
@@ -516,7 +508,8 @@ namespace VSCodeDebugging
 						UpdateBreakEventInfoFromProtocolBreakpoint(info, breakpoint, responseBreakpoint);
 						var id = responseBreakpoint.id ?? -1;
 						if (id != -1) {
-							idToBreakEventForDocument[id] = breakpoint;
+							idToDocumentBreakEvent[id] = breakpoint;
+							breakEventToId[breakpoint] = id;
 						}
 						else {
 							OnDebuggerOutput(true, string.Format("Debugger returned breakpoint without id. File {0}, line {1}, column {2}",
