@@ -118,6 +118,12 @@ namespace VSCodeDebugging.VSCodeProtocol
 		public bool columnsStartAt1 { get; set; }
 		/** Determines in what format paths are specified. Possible values are 'path' or 'uri'. The default is 'path', which is the native format. */
 		public string pathFormat { get; set; }
+		/** Client supports the optional type attribute for variables. */
+		public bool supportsVariableType { get; set; }
+		/** Client supports the paging of variables. */
+		public bool supportsVariablePaging { get; set; }
+		/** Client supports the runInTerminal request. */
+		public bool supportsRunInTerminalRequest { get; set; }
 	}
 
 	public class LaunchRequest : Request<LaunchRequestArguments, ResponseBody>
@@ -408,6 +414,12 @@ namespace VSCodeDebugging.VSCodeProtocol
 	{
 		/** The Variable reference. */
 		public int variablesReference { get; set; }
+		/** Optional filter to limit the child variables to either named or indexed. If ommited, both types are fetched. */
+		public string filter { get; set; } //'indexed' | 'named';
+		/** The index of the first variable to return; if omitted children start at 0. */
+		public int? start { get; set; }
+		/** The number of variables to return. If count is missing or 0, all variables are returned. */
+		public int? count { get; set; }
 	}
 
 	/** StackTrace request; value of command field is "stackTrace".
@@ -564,19 +576,24 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 	public class Variable
 	{
+		/** The variable's name. */
 		public string name { get; set; }
+		/** The variable's value. For structured objects this can be a multi line text, e.g. for a function the body of a function. */
 		public string value { get; set; }
+		/** The variable's type. */
+		public string type { get; set; }
+		/** Properties of a variable that can be used to determine how to render the variable in the UI. Format of the string value: TBD. */
+		public string kind { get; set; }
+		/** If variablesReference is > 0, the variable is structured and its children can be retrieved by passing variablesReference to the VariablesRequest. */
 		public int variablesReference { get; set; }
-		public Variable()
-		{
-
-		}
-		public Variable(string name, string value, int variablesReference = 0)
-		{
-			this.name = name;
-			this.value = value;
-			this.variablesReference = variablesReference;
-		}
+		/** The number of named child variables in this scope.
+			The client can use this optional information to present the children in a paged UI and fetch them in chunks.
+		*/
+		public int? namedVariables { get; set; }
+		/** The number of indexed child variables in this scope.
+			The client can use this optional information to present the children in a paged UI and fetch them in chunks.
+		*/
+		public int? indexedVariables { get; set; }
 	}
 
 	public class Thread
@@ -902,8 +919,20 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 	public class EvaluateResponseBody : ResponseBody
 	{
+		/** The result of the evaluate request. */
 		public string result { get; set; }
+		/** The optional type of the evaluate result. Nullable*/
+		public string type { get; set; }
+		/** If variablesReference is > 0, the evaluate result is structured and its children can be retrieved by passing variablesReference to the VariablesRequest. */
 		public int variablesReference { get; set; }
+		/** The number of named child variables.
+			The client can use this optional information to present the variables in a paged UI and fetch them in chunks.
+		*/
+		public int? namedVariables { get; set; }
+		/** The number of indexed child variables.
+			The client can use this optional information to present the variables in a paged UI and fetch them in chunks.
+		*/
+		public int? indexedVariables { get; set; }
 	}
 
 	public class SetBreakpointsResponseBody : ResponseBody

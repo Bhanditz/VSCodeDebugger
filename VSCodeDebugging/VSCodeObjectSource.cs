@@ -24,7 +24,7 @@ namespace VSCodeDebugging
 				var children = vsCodeDebuggerSession.ProtocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
 					variablesReference = variablesReference
 				})).variables;
-				return children.Select(c => VsCodeVariableToObjectValue(vsCodeDebuggerSession, c.name, c.value, c.variablesReference)).ToArray();
+				return children.Select(c => VsCodeVariableToObjectValue(vsCodeDebuggerSession, c.name, c.value, c.type, c.variablesReference)).ToArray();
 			}
 
 			public object GetRawValue(ObjectPath path, EvaluationOptions options)

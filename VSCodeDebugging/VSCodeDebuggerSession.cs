@@ -385,7 +385,8 @@ namespace VSCodeDebugging
 				adapterID = "coreclr",
 				linesStartAt1 = true,
 				columnsStartAt1 = true,
-				pathFormat = "path"
+				pathFormat = "path",
+				supportsVariableType = false
 			});
 			Capabilities = ProtocolClient.SendRequestSync(initRequest);
 		}

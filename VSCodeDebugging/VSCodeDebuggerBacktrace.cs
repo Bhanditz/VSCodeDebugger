@@ -44,11 +44,11 @@ namespace VSCodeDebugging
 				frameId = frames[frameIndex].id
 			}));
 			foreach (var variablesGroup in scopeBody.scopes) {
-				var varibles = vsCodeDebuggerSession.ProtocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
+				var variables = vsCodeDebuggerSession.ProtocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
 					variablesReference = variablesGroup.variablesReference
 				}));
-				foreach (var variable in varibles.variables) {
-					results.Add(VsCodeVariableToObjectValue(vsCodeDebuggerSession, variable.name, variable.value, variable.variablesReference));
+				foreach (var variable in variables.variables) {
+					results.Add(VsCodeVariableToObjectValue(vsCodeDebuggerSession, variable.name, variable.value, variable.type, variable.variablesReference));
 				}
 			}
 			return results.ToArray();
@@ -56,7 +56,7 @@ namespace VSCodeDebugging
 
 		public ExceptionInfo GetException(int frameIndex, EvaluationOptions options)
 		{
-			return new ExceptionInfo(GetAllLocals(frameIndex, options).Where(o => o.Name == "$exception").FirstOrDefault());
+			return new ExceptionInfo(GetAllLocals(frameIndex, options).FirstOrDefault(o => o.Name == "$exception"));
 		}
 
 		public CompletionData GetExpressionCompletionData(int frameIndex, string exp)
@@ -72,17 +72,26 @@ namespace VSCodeDebugging
 					expression = expr,
 					frameId = frames[frameIndex].id
 				}));
-				results.Add(VsCodeVariableToObjectValue(vsCodeDebuggerSession, expr, responseBody.result, responseBody.variablesReference));
+				results.Add(VsCodeVariableToObjectValue(vsCodeDebuggerSession, expr, responseBody.result, responseBody.type, responseBody.variablesReference));
 			}
 			return results.ToArray();
 		}
 
-		static ObjectValue VsCodeVariableToObjectValue(VSCodeDebuggerSession vsCodeDebuggerSession, string name, string value, int variablesReference)
+		static ObjectValue VsCodeVariableToObjectValue(VSCodeDebuggerSession vsCodeDebuggerSession, string name, string value, string type, int variablesReference)
 		{
-			if (variablesReference == 0)//This is some kind of primitive...
-				return ObjectValue.CreatePrimitive(null, new ObjectPath(name), "unknown", new EvaluationResult(value), ObjectValueFlags.ReadOnly);
+			if (type != null) {
+				var typeSuffix = $" [{type}]";
+				if (name.EndsWith(typeSuffix)) {
+					name = name.Substring(0, name.Length - typeSuffix.Length);
+				}
+			}
+			var resultingTypeName = type ?? "unknown";
+
+			if (variablesReference == 0)  //This is some kind of primitive... 
+				return ObjectValue.CreatePrimitive(null, new ObjectPath(name), resultingTypeName, new EvaluationResult(value), ObjectValueFlags.ReadOnly);
 			else
-				return ObjectValue.CreateObject(new VSCodeObjectSource(vsCodeDebuggerSession, variablesReference), new ObjectPath(name), "unknown", new EvaluationResult(value), ObjectValueFlags.ReadOnly, null);
+				return ObjectValue.CreateObject(new VSCodeObjectSource(vsCodeDebuggerSession, variablesReference), new ObjectPath(name), resultingTypeName, 
+					new EvaluationResult(value), ObjectValueFlags.ReadOnly, null);
 		}
 
 		public ObjectValue[] GetLocalVariables(int frameIndex, EvaluationOptions options)
@@ -114,7 +123,18 @@ namespace VSCodeDebugging
 			for (int i = firstIndex; i < maxIndex; i++)
 			{
 				var vsFrame = frames[i];
-				stackFrames[i - firstIndex] = new Mono.Debugging.Client.StackFrame(vsFrame.id, new SourceLocation(vsFrame.name, vsFrame.source?.path, vsFrame.line, vsFrame.column, -1, -1), "C#");
+				var vsFrameSource = vsFrame.source;
+				var vsFrameName = vsFrame.name;
+				var parts = vsFrameName.Split('.').ToList();
+				var fullTypeName = string.Empty;
+				if (parts.Count > 1) {
+					fullTypeName = string.Join(".", parts.Take(parts.Count - 1));
+
+
+				}
+				var hasDebugInfo = vsFrameSource != null;
+				stackFrames[i - firstIndex] = new Mono.Debugging.Client.StackFrame(vsFrame.id, string.Empty, 
+					new SourceLocation(vsFrameName, vsFrameSource?.path, vsFrame.line, vsFrame.column, -1, -1), "C#", !hasDebugInfo, hasDebugInfo, string.Empty, fullTypeName);
 			}
 			return stackFrames;
 		}
