@@ -5,13 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using Mono.Debugging.Backend;
 using Mono.Debugging.Client;
 using VSCodeDebugging.VSCodeProtocol;
 using Breakpoint = Mono.Debugging.Client.Breakpoint;
 using VSBreakpoint = VSCodeDebugging.VSCodeProtocol.Breakpoint;
-using VSStackFrame = VSCodeDebugging.VSCodeProtocol.StackFrame;
-using StackFrame = Mono.Debugging.Client.StackFrame;
 
 namespace VSCodeDebugging
 {
@@ -26,7 +23,7 @@ namespace VSCodeDebugging
 		protected override void OnContinue()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new ContinueRequest(new ContinueRequestArguments {
+			ProtocolClient.SendRequestAsync(new ContinueRequest(new ContinueRequestArguments {
 				threadId = currentThreadId
 			}));
 		}
@@ -34,7 +31,7 @@ namespace VSCodeDebugging
 		protected override void OnDetach()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new DisconnectRequest());
+			ProtocolClient.SendRequestAsync(new DisconnectRequest());
 		}
 
 		protected override void OnUpdateBreakEvent(BreakEventInfo eventInfo)
@@ -62,18 +59,18 @@ namespace VSCodeDebugging
 		protected override void OnExit()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new DisconnectRequest());
+			ProtocolClient.SendRequestAsync(new DisconnectRequest());
 		}
 
 		protected override void OnFinish()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new StepOutRequest(new StepOutRequestArguments {
+			ProtocolClient.SendRequestAsync(new StepOutRequest(new StepOutRequestArguments {
 				threadId = currentThreadId
 			}));
 		}
 
-		ProcessInfo[] processInfo = { new ProcessInfo(1, "debugee") };
+		readonly ProcessInfo[] processInfo = { new ProcessInfo(1, "debugee") };
 
 		protected override ProcessInfo[] OnGetProcesses()
 		{
@@ -87,7 +84,7 @@ namespace VSCodeDebugging
 
 		protected override ThreadInfo[] OnGetThreads(long processId)
 		{
-			var threadsResponse = protocolClient.SendRequestSync(new ThreadsRequest());
+			var threadsResponse = ProtocolClient.SendRequestSync(new ThreadsRequest());
 			var threads = new ThreadInfo[threadsResponse.threads.Length];
 			for (int i = 0; i < threads.Length; i++) {
 				threads[i] = new ThreadInfo(processId,
@@ -154,7 +151,7 @@ namespace VSCodeDebugging
 		protected override void OnNextInstruction()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new NextRequest(new NextRequestArguments {
+			ProtocolClient.SendRequestAsync(new NextRequest(new NextRequestArguments {
 				threadId = currentThreadId
 			}));
 		}
@@ -162,7 +159,7 @@ namespace VSCodeDebugging
 		protected override void OnNextLine()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new NextRequest(new NextRequestArguments {
+			ProtocolClient.SendRequestAsync(new NextRequest(new NextRequestArguments {
 				threadId = currentThreadId
 			}));
 		}
@@ -188,169 +185,7 @@ namespace VSCodeDebugging
 		}
 
 		Process debugAgentProcess;
-		ProtocolClient protocolClient;
-
-		class VSCodeDebuggerBacktrace : IBacktrace
-		{
-			long threadId;
-			VSCodeDebuggerSession vsCodeDebuggerSession;
-			VSStackFrame[] frames;
-
-			public VSCodeDebuggerBacktrace(VSCodeDebuggerSession vsCodeDebuggerSession, long threadId)
-			{
-				this.vsCodeDebuggerSession = vsCodeDebuggerSession;
-				this.threadId = threadId;
-				var body = vsCodeDebuggerSession.protocolClient.SendRequestSync(new StackTraceRequest(new StackTraceArguments {
-					threadId = threadId,
-					startFrame = 0,
-					levels = 20
-				}));
-				frames = body.stackFrames;
-			}
-
-			public int FrameCount {
-				get {
-					return frames.Length;
-				}
-			}
-
-			public AssemblyLine[] Disassemble(int frameIndex, int firstLine, int count)
-			{
-				throw new NotImplementedException();
-			}
-
-			public ObjectValue[] GetAllLocals(int frameIndex, EvaluationOptions options)
-			{
-				List<ObjectValue> results = new List<ObjectValue>();
-				var scopeBody = vsCodeDebuggerSession.protocolClient.SendRequestSync(new ScopesRequest(new ScopesArguments {
-					frameId = frames[frameIndex].id
-				}));
-				foreach (var variablesGroup in scopeBody.scopes) {
-					var varibles = vsCodeDebuggerSession.protocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
-						variablesReference = variablesGroup.variablesReference
-					}));
-					foreach (var variable in varibles.variables) {
-						results.Add(VsCodeVariableToObjectValue(vsCodeDebuggerSession, variable.name, variable.value, variable.variablesReference));
-					}
-				}
-				return results.ToArray();
-			}
-
-			public ExceptionInfo GetException(int frameIndex, EvaluationOptions options)
-			{
-				return new ExceptionInfo(GetAllLocals(frameIndex, options).Where(o => o.Name == "$exception").FirstOrDefault());
-			}
-
-			public CompletionData GetExpressionCompletionData(int frameIndex, string exp)
-			{
-				return new CompletionData();
-			}
-
-			class VSCodeObjectSource : IObjectValueSource
-			{
-				int variablesReference;
-				VSCodeDebuggerSession vsCodeDebuggerSession;
-
-				public VSCodeObjectSource(VSCodeDebuggerSession vsCodeDebuggerSession, int variablesReference)
-				{
-					this.vsCodeDebuggerSession = vsCodeDebuggerSession;
-					this.variablesReference = variablesReference;
-				}
-
-				public ObjectValue[] GetChildren(ObjectPath path, int index, int count, EvaluationOptions options)
-				{
-					var children = vsCodeDebuggerSession.protocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
-						variablesReference = variablesReference
-					})).variables;
-					return children.Select(c => VsCodeVariableToObjectValue(vsCodeDebuggerSession, c.name, c.value, c.variablesReference)).ToArray();
-				}
-
-				public object GetRawValue(ObjectPath path, EvaluationOptions options)
-				{
-					throw new NotImplementedException();
-				}
-
-				public ObjectValue GetValue(ObjectPath path, EvaluationOptions options)
-				{
-					throw new NotImplementedException();
-				}
-
-				public void SetRawValue(ObjectPath path, object value, EvaluationOptions options)
-				{
-					throw new NotImplementedException();
-				}
-
-				public EvaluationResult SetValue(ObjectPath path, string value, EvaluationOptions options)
-				{
-					throw new NotImplementedException();
-				}
-			}
-
-			public ObjectValue[] GetExpressionValues(int frameIndex, string[] expressions, EvaluationOptions options)
-			{
-				var results = new List<ObjectValue>();
-				foreach (var expr in expressions) {
-					var responseBody = vsCodeDebuggerSession.protocolClient.SendRequestSync(new EvaluateRequest(new EvaluateRequestArguments {
-						expression = expr,
-						frameId = frames[frameIndex].id
-					}));
-					results.Add(VsCodeVariableToObjectValue(vsCodeDebuggerSession, expr, responseBody.result, responseBody.variablesReference));
-				}
-				return results.ToArray();
-			}
-
-			static ObjectValue VsCodeVariableToObjectValue(VSCodeDebuggerSession vsCodeDebuggerSession, string name, string value, int variablesReference)
-			{
-				if (variablesReference == 0)//This is some kind of primitive...
-					return ObjectValue.CreatePrimitive(null, new ObjectPath(name), "unknown", new EvaluationResult(value), ObjectValueFlags.ReadOnly);
-				else
-					return ObjectValue.CreateObject(new VSCodeObjectSource(vsCodeDebuggerSession, variablesReference), new ObjectPath(name), "unknown", new EvaluationResult(value), ObjectValueFlags.ReadOnly, null);
-			}
-
-			public ObjectValue[] GetLocalVariables(int frameIndex, EvaluationOptions options)
-			{
-				throw new NotImplementedException();
-			}
-
-			public ObjectValue[] GetParameters(int frameIndex, EvaluationOptions options)
-			{
-				List<ObjectValue> results = new List<ObjectValue>();
-				var scopeBody = vsCodeDebuggerSession.protocolClient.SendRequestSync(new ScopesRequest(new ScopesArguments {
-					frameId = frames[frameIndex].id
-				}));
-				foreach (var variablesGroup in scopeBody.scopes) {
-					var varibles = vsCodeDebuggerSession.protocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
-						variablesReference = variablesGroup.variablesReference
-					}));
-					foreach (var variable in varibles.variables) {
-						results.Add(ObjectValue.CreatePrimitive(null, new ObjectPath(variable.name), "unknown", new EvaluationResult(variable.value), ObjectValueFlags.None));
-					}
-				}
-				return results.ToArray();
-			}
-
-			public StackFrame[] GetStackFrames(int firstIndex, int lastIndex)
-			{
-				var maxIndex = Math.Min(lastIndex, frames.Length);
-				var stackFrames = new StackFrame[maxIndex - firstIndex];
-				for (int i = firstIndex; i < maxIndex; i++)
-				{
-					var vsFrame = frames[i];
-					stackFrames[i - firstIndex] = new StackFrame(vsFrame.id, new SourceLocation(vsFrame.name, vsFrame.source?.path, vsFrame.line, vsFrame.column, -1, -1), "C#");
-				}
-				return stackFrames;
-			}
-
-			public ObjectValue GetThisReference(int frameIndex, EvaluationOptions options)
-			{
-				return GetAllLocals(frameIndex, options).FirstOrDefault(l => l.Name == "this");
-			}
-
-			public ValidationResult ValidateExpression(int frameIndex, string expression, EvaluationOptions options)
-			{
-				return new ValidationResult(true, null);
-			}
-		}
+		public ProtocolClient ProtocolClient { get; private set; }
 
 		Backtrace GetThreadBacktrace(long threadId)
 		{
@@ -466,7 +301,7 @@ namespace VSCodeDebugging
 		{
 			var allFileBreakpoints = Breakpoints.GetBreakpointsAtFile(filename).ToList();
 			var activeFileBreakpoints = allFileBreakpoints.Where(bp => bp.Enabled).ToList();
-			protocolClient.SendRequestAsync(new SetBreakpointsRequest(new SetBreakpointsRequestArguments
+			ProtocolClient.SendRequestAsync(new SetBreakpointsRequest(new SetBreakpointsRequestArguments
 			{
 				Source = new Source(filename),
 				Breakpoints = activeFileBreakpoints.Select(bp => new SourceBreakpoint
@@ -539,20 +374,20 @@ namespace VSCodeDebugging
 			startInfo.Arguments = "--trace=response --engineLogging=VSDebugLog.log";
 			startInfo.EnvironmentVariables["PATH"] = Environment.GetEnvironmentVariable("PATH") + "C:\\Program Files\\dotnet;";
 			debugAgentProcess = new Process { StartInfo = startInfo };
-			protocolClient = new ProtocolClient();
-			protocolClient.OnEvent += HandleEvent;
-			protocolClient.DispatchException += ProtocolClientOnException;
-			protocolClient.ReceiveException += ProtocolClientOnException;
-			protocolClient.SendException += ProtocolClientOnException;
+			ProtocolClient = new ProtocolClient();
+			ProtocolClient.OnEvent += HandleEvent;
+			ProtocolClient.DispatchException += ProtocolClientOnException;
+			ProtocolClient.ReceiveException += ProtocolClientOnException;
+			ProtocolClient.SendException += ProtocolClientOnException;
 			debugAgentProcess.Start();
-			protocolClient.Start(debugAgentProcess.StandardOutput.BaseStream, debugAgentProcess.StandardInput.BaseStream);
+			ProtocolClient.Start(debugAgentProcess.StandardOutput.BaseStream, debugAgentProcess.StandardInput.BaseStream);
 			var initRequest = new InitializeRequest(new InitializeRequestArguments() {
 				adapterID = "coreclr",
 				linesStartAt1 = true,
 				columnsStartAt1 = true,
 				pathFormat = "path"
 			});
-			Capabilities = protocolClient.SendRequestSync(initRequest);
+			Capabilities = ProtocolClient.SendRequestSync(initRequest);
 		}
 
 		void ProtocolClientOnException(object sender, ThreadExceptionEventArgs threadExceptionEventArgs)
@@ -578,7 +413,7 @@ namespace VSCodeDebugging
 				NoDebug = false,
 				StopAtEntry = false
 			});
-			var lal = protocolClient.SendRequestSync(launchRequest);
+			var lal = ProtocolClient.SendRequestSync(launchRequest);
 			OnStarted();
 		}
 
@@ -586,7 +421,7 @@ namespace VSCodeDebugging
 		{
 			base.OnStarted(t);
 			// was sync
-			protocolClient.SendRequestAsync(new ConfigurationDoneRequest());
+			ProtocolClient.SendRequestAsync(new ConfigurationDoneRequest());
 		}
 
 		protected override void OnSetActiveThread(long processId, long threadId)
@@ -597,7 +432,7 @@ namespace VSCodeDebugging
 		protected override void OnStepInstruction()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new StepInRequest(new StepInRequestArguments {
+			ProtocolClient.SendRequestAsync(new StepInRequest(new StepInRequestArguments {
 				threadId = currentThreadId
 			}));
 		}
@@ -605,7 +440,7 @@ namespace VSCodeDebugging
 		protected override void OnStepLine()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new StepInRequest(new StepInRequestArguments {
+			ProtocolClient.SendRequestAsync(new StepInRequest(new StepInRequestArguments {
 				threadId = currentThreadId
 			}));
 		}
@@ -613,7 +448,7 @@ namespace VSCodeDebugging
 		protected override void OnStop()
 		{
 			// was sync
-			protocolClient.SendRequestAsync(new PauseRequest(new PauseRequestArguments {
+			ProtocolClient.SendRequestAsync(new PauseRequest(new PauseRequestArguments {
 				threadId = currentThreadId
 			}));
 		}
