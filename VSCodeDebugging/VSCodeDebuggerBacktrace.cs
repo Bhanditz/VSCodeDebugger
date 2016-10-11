@@ -10,6 +10,8 @@ namespace VSCodeDebugging
 {
 	public partial class VSCodeDebuggerBacktrace : IBacktrace
 	{
+		private static readonly HashSet<string> PredefinedGroupNames = new HashSet<string> { "Static members", "Non-Public members" };
+
 		long threadId;
 		readonly VSCodeDebuggerSession vsCodeDebuggerSession;
 		readonly StackFrame[] frames;
@@ -79,19 +81,33 @@ namespace VSCodeDebugging
 
 		static ObjectValue VsCodeVariableToObjectValue(VSCodeDebuggerSession vsCodeDebuggerSession, string name, string value, string type, int variablesReference)
 		{
-			if (type != null) {
-				var typeSuffix = $" [{type}]";
-				if (name.EndsWith(typeSuffix)) {
-					name = name.Substring(0, name.Length - typeSuffix.Length);
-				}
-			}
+			name = NormalizeName(name);
 			var resultingTypeName = type ?? "unknown";
 
+			var isGroup = IsGroup(name, type);
 			if (variablesReference == 0)  //This is some kind of primitive... 
-				return ObjectValue.CreatePrimitive(null, new ObjectPath(name), resultingTypeName, new EvaluationResult(value), ObjectValueFlags.ReadOnly);
+				return ObjectValue.CreatePrimitive(null, new ObjectPath(name), resultingTypeName, new EvaluationResult(value), isGroup ? ObjectValueFlags.Group : ObjectValueFlags.None);
 			else
 				return ObjectValue.CreateObject(new VSCodeObjectSource(vsCodeDebuggerSession, variablesReference), new ObjectPath(name), resultingTypeName, 
-					new EvaluationResult(value), ObjectValueFlags.ReadOnly, null);
+					new EvaluationResult(value), isGroup ? ObjectValueFlags.Group : ObjectValueFlags.None, null);
+		}
+
+		static bool IsGroup(string name, string type)
+		{
+			if (type != null)
+				return false;
+			return PredefinedGroupNames.Contains(name);
+		}
+
+		static string NormalizeName(string name)
+		{
+			var firstBracket = name.IndexOf("[", StringComparison.InvariantCulture);
+			var lastBracket = name.LastIndexOf("]", StringComparison.InvariantCulture);
+			// don't cut if the name starts with '['
+			if (firstBracket > 0 && lastBracket != -1 && firstBracket < lastBracket) {
+				name = name.Remove(firstBracket, lastBracket - firstBracket + 1);
+			}
+			return name.Trim();
 		}
 
 		public ObjectValue[] GetLocalVariables(int frameIndex, EvaluationOptions options)
@@ -101,19 +117,20 @@ namespace VSCodeDebugging
 
 		public ObjectValue[] GetParameters(int frameIndex, EvaluationOptions options)
 		{
-			List<ObjectValue> results = new List<ObjectValue>();
+			throw new NotImplementedException();
+/*			List<ObjectValue> results = new List<ObjectValue>();
 			var scopeBody = vsCodeDebuggerSession.ProtocolClient.SendRequestSync(new ScopesRequest(new ScopesArguments {
 				frameId = frames[frameIndex].id
 			}));
 			foreach (var variablesGroup in scopeBody.scopes) {
-				var varibles = vsCodeDebuggerSession.ProtocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
+				var variables = vsCodeDebuggerSession.ProtocolClient.SendRequestSync(new VariablesRequest(new VariablesRequestArguments {
 					variablesReference = variablesGroup.variablesReference
 				}));
-				foreach (var variable in varibles.variables) {
+				foreach (var variable in variables.variables) {
 					results.Add(ObjectValue.CreatePrimitive(null, new ObjectPath(variable.name), "unknown", new EvaluationResult(variable.value), ObjectValueFlags.None));
 				}
 			}
-			return results.ToArray();
+			return results.ToArray();*/
 		}
 
 		public Mono.Debugging.Client.StackFrame[] GetStackFrames(int firstIndex, int lastIndex)
@@ -129,8 +146,6 @@ namespace VSCodeDebugging
 				var fullTypeName = string.Empty;
 				if (parts.Count > 1) {
 					fullTypeName = string.Join(".", parts.Take(parts.Count - 1));
-
-
 				}
 				var hasDebugInfo = vsFrameSource != null;
 				stackFrames[i - firstIndex] = new Mono.Debugging.Client.StackFrame(vsFrame.id, string.Empty, 
