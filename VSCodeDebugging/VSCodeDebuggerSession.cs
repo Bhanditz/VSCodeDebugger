@@ -14,6 +14,13 @@ namespace VSCodeDebugging
 {
 	public class VSCodeDebuggerSession : DebuggerSession
 	{
+		readonly VSCodeDebuggerAgentParameters debuggerAgentParameters;
+
+		public VSCodeDebuggerSession(VSCodeDebuggerAgentParameters debuggerAgentParameters)
+		{
+			debuggerAgentParameters = debuggerAgentParameters;
+		}
+
 		long currentThreadId;
 		protected override void OnAttachToProcess(long processId)
 		{
@@ -284,7 +291,7 @@ namespace VSCodeDebugging
 			else if (eventBody is TerminatedEventBody)
 			{
 				//var terminatedEvent = (TerminatedEventBody)eventBody;
-				OnTargetEvent(new TargetEventArgs(TargetEventType.TargetExited));
+				//OnTargetEvent(new TargetEventArgs(TargetEventType.TargetExited));
 			}
 		}
 
@@ -365,14 +372,21 @@ namespace VSCodeDebugging
 
 		void StartDebugAgent()
 		{
-			var startInfo = new ProcessStartInfo(Path.Combine(Path.GetDirectoryName(typeof(VSCodeDebuggerSession).Assembly.Location), "CoreClrAdaptor", "OpenDebugAD7.exe"));
-			startInfo.RedirectStandardOutput = true;
-			startInfo.RedirectStandardInput = true;
-			startInfo.StandardOutputEncoding = Encoding.UTF8;
-			startInfo.StandardOutputEncoding = Encoding.UTF8;
-			startInfo.UseShellExecute = false;
-			startInfo.Arguments = "--trace=response --engineLogging=VSDebugLog.log";
-			startInfo.EnvironmentVariables["PATH"] = Environment.GetEnvironmentVariable("PATH") + "C:\\Program Files\\dotnet;";
+			if (debuggerAgentParameters.CoreClrDebugAdapterLocation == null)
+				throw new ArgumentException("vsCodeStartInfo.CoreClrDebugAdapterLocation must not be null");
+			var adapterFullpath = Path.Combine(debuggerAgentParameters.CoreClrDebugAdapterLocation, VSCodeDebuggerAgentParameters.AdapterFilename);
+			if (!File.Exists(adapterFullpath))
+				throw new FileNotFoundException("Debugger adapter not found", adapterFullpath);
+			var startInfo = new ProcessStartInfo
+			{
+				RedirectStandardOutput = true,
+				RedirectStandardInput = true,
+				StandardOutputEncoding = Encoding.UTF8,
+				UseShellExecute = false
+			};
+			if (!string.IsNullOrEmpty(debuggerAgentParameters.DebuggerEngineLogFilePath)) {
+				startInfo.Arguments = $"--trace=response --engineLogging='{debuggerAgentParameters.DebuggerEngineLogFilePath}'";
+			}
 			debugAgentProcess = new Process { StartInfo = startInfo };
 			ProtocolClient = new ProtocolClient();
 			ProtocolClient.OnEvent += HandleEvent;
@@ -386,7 +400,7 @@ namespace VSCodeDebugging
 				linesStartAt1 = true,
 				columnsStartAt1 = true,
 				pathFormat = "path",
-				supportsVariableType = false
+				supportsVariableType = true
 			});
 			Capabilities = ProtocolClient.SendRequestSync(initRequest);
 		}
@@ -400,20 +414,30 @@ namespace VSCodeDebugging
 
 		protected override void OnRun(DebuggerStartInfo startInfo)
 		{
+			var vsCodeDebuggerStartInfo = startInfo as VSCodeDebuggerStartInfo;
+			if (vsCodeDebuggerStartInfo == null)
+				throw new ArgumentException("startInfo must be VSCodeDebuggerStartInfo");
+
 			StartDebugAgent();
 			var cwd = string.IsNullOrWhiteSpace(startInfo.WorkingDirectory) ? Path.GetDirectoryName(startInfo.Command) : startInfo.WorkingDirectory;
-			var launchRequest = new LaunchRequest(new LaunchRequestArguments {
+			var dotnetCommand = vsCodeDebuggerStartInfo.DotNetCliPath ?? (PlatformUtil.IsWindows ? "dotnet.exe" : "dotnet");
+			var launchRequestArguments = new LaunchRequestArguments {
 				Name = ".NET Core Launch (console)",
 				Type = "coreclr",
 				Request = "launch",
-				PreLaunchTask = "build",
-				Program = startInfo.Command,
-				// for test purposes
-				Args = new[] {"C:\\Users\\Artem.Bukhonov\\RiderProjects\\DotNetCoreConsoleApplication\\DotNetCoreConsoleApplication\\bin\\Debug\\netcoreapp1.0\\DotNetCoreConsoleApplication.dll"},//startInfo.Arguments.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries),
+				Program = dotnetCommand,
+				// first param is an assembly, then its params go
+				Args = new object[] { $"\"{startInfo.Command}\"", vsCodeDebuggerStartInfo.Arguments },
 				Cwd = cwd,
 				NoDebug = false,
-				StopAtEntry = false
-			});
+				StopAtEntry = vsCodeDebuggerStartInfo.StopAtEntry,
+				ExternalConsole = vsCodeDebuggerStartInfo.ExternalConsole,
+				Env = vsCodeDebuggerStartInfo.EnvironmentVariables
+			};
+			if (vsCodeDebuggerStartInfo.BuildBeforeRun) {
+				launchRequestArguments.PreLaunchTask = "build";
+			}
+			var launchRequest = new LaunchRequest(launchRequestArguments);
 			var lal = ProtocolClient.SendRequestSync(launchRequest);
 			OnStarted();
 		}

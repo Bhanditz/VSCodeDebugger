@@ -86,12 +86,15 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="VSCodeDebuggerAgentParameters.cs" />
     <Compile Include="VSCodeDebuggerBacktrace.cs" />
     <Compile Include="VSCodeDebuggerSession.cs" />
+    <Compile Include="VSCodeDebuggerStartInfo.cs" />
     <Compile Include="VSCodeObjectSource.cs" />
     <Compile Include="VSCodeProtocol\ByteBuffer.cs" />
     <Compile Include="VSCodeProtocol\DebugProtocol.cs" />
     <Compile Include="VSCodeProtocol\JsonUtil.cs" />
+    <Compile Include="VSCodeProtocol\PlatformUtil.cs" />
     <Compile Include="VSCodeProtocol\ProtocolClient.cs" />
     <Compile Include="VSCodeProtocol\ProtocolEndpoint.cs" />
   </ItemGroup>

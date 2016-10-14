@@ -164,6 +164,12 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 		[JsonProperty("noDebug")]
 		public bool NoDebug { get; set; }
+
+		[JsonProperty("externalConsole")]
+		public bool ExternalConsole { get; set; }
+
+		[JsonProperty("env")]
+		public Dictionary<string, string> Env { get; set; }
 	}
 
 	/** Next request; value of command field is "next".
