@@ -14,11 +14,11 @@ namespace VSCodeDebugging
 {
 	public class VSCodeDebuggerSession : DebuggerSession
 	{
-		readonly VSCodeDebuggerAgentParameters debuggerAgentParameters;
+		private readonly VSCodeDebuggerAgentParameters debuggerAgentParameters;
 
 		public VSCodeDebuggerSession(VSCodeDebuggerAgentParameters debuggerAgentParameters)
 		{
-			debuggerAgentParameters = debuggerAgentParameters;
+			this.debuggerAgentParameters = debuggerAgentParameters;
 		}
 
 		long currentThreadId;
@@ -377,7 +377,7 @@ namespace VSCodeDebugging
 			var adapterFullpath = Path.Combine(debuggerAgentParameters.CoreClrDebugAdapterLocation, VSCodeDebuggerAgentParameters.AdapterFilename);
 			if (!File.Exists(adapterFullpath))
 				throw new FileNotFoundException("Debugger adapter not found", adapterFullpath);
-			var startInfo = new ProcessStartInfo
+			var startInfo = new ProcessStartInfo(adapterFullpath)
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardInput = true,
