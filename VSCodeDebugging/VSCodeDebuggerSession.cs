@@ -431,7 +431,7 @@ namespace VSCodeDebugging
 				Cwd = cwd,
 				NoDebug = false,
 				StopAtEntry = vsCodeDebuggerStartInfo.StopAtEntry,
-				ExternalConsole = vsCodeDebuggerStartInfo.ExternalConsole,
+				ExternalConsole = vsCodeDebuggerStartInfo.UseExternalConsole,
 				Env = vsCodeDebuggerStartInfo.EnvironmentVariables
 			};
 			if (vsCodeDebuggerStartInfo.BuildBeforeRun) {
