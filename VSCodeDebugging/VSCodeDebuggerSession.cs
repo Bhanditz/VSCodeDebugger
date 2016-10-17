@@ -290,8 +290,7 @@ namespace VSCodeDebugging
 			}
 			else if (eventBody is TerminatedEventBody)
 			{
-				//var terminatedEvent = (TerminatedEventBody)eventBody;
-				//OnTargetEvent(new TargetEventArgs(TargetEventType.TargetExited));
+				debugAgentProcess.Kill();
 			}
 		}
 
