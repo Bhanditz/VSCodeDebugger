@@ -457,7 +457,6 @@ namespace VSCodeDebugging
 				Type = "coreclr",
 				Request = "launch",
 				Program = startInfo.Command,
-				// first param is an assembly, then its params go
 				Args = ParametersUtil.ReadArgs(startInfo.Arguments).Cast<object>().ToArray(),
 				Cwd = cwd,
 				NoDebug = false,
