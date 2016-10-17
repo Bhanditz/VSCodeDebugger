@@ -386,14 +386,25 @@ namespace VSCodeDebugging
 			if (!string.IsNullOrEmpty(debuggerAgentParameters.DebuggerEngineLogFilePath)) {
 				startInfo.Arguments = $"--trace=response --engineLogging='{debuggerAgentParameters.DebuggerEngineLogFilePath}'";
 			}
-			debugAgentProcess = new Process { StartInfo = startInfo };
-			ProtocolClient = new ProtocolClient();
+			debugAgentProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true};
+			var cancellationTokenSource = new CancellationTokenSource();
+			debugAgentProcess.Exited += (sender, args) =>
+			{
+				try {
+					cancellationTokenSource.Cancel();
+					OnTargetEvent(new TargetEventArgs(TargetEventType.TargetExited));
+				}
+				catch (Exception e) {
+					HandleException(e);
+				}
+			};
+			debugAgentProcess.Start();
+			ProtocolClient = new ProtocolClient(debugAgentProcess.StandardOutput.BaseStream, debugAgentProcess.StandardInput.BaseStream, cancellationTokenSource.Token);
 			ProtocolClient.OnEvent += HandleEvent;
 			ProtocolClient.DispatchException += ProtocolClientOnException;
 			ProtocolClient.ReceiveException += ProtocolClientOnException;
 			ProtocolClient.SendException += ProtocolClientOnException;
-			debugAgentProcess.Start();
-			ProtocolClient.Start(debugAgentProcess.StandardOutput.BaseStream, debugAgentProcess.StandardInput.BaseStream);
+			ProtocolClient.Start();
 			var initRequest = new InitializeRequest(new InitializeRequestArguments() {
 				adapterID = "coreclr",
 				linesStartAt1 = true,

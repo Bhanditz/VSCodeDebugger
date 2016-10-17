@@ -10,6 +10,8 @@ namespace VSCodeDebugging.VSCodeProtocol
 {
 	public abstract class ProtocolEndpoint
 	{
+		protected CancellationToken CancellationToken { get; set; }
+		readonly Stream _inputStream;
 		public TraceLevel Trace = TraceLevel.None;
 
 		public event ThreadExceptionEventHandler DispatchException = delegate { };
@@ -26,54 +28,51 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 		private Stream _outputStream;
 
-		private ByteBuffer _rawData;
+		private readonly ByteBuffer _rawData;
 		private int _bodyLength;
 
 		private bool _stopRequested;
 
 
-		public ProtocolEndpoint()
+		public ProtocolEndpoint(Stream inputStream, Stream outputStream, CancellationToken cancellationToken)
 		{
+			CancellationToken = cancellationToken;
+			_inputStream = inputStream;
+			_outputStream = outputStream;
 			_sequenceNumber = 1;
 			_bodyLength = -1;
 			_rawData = new ByteBuffer();
 		}
 
-		public virtual void Start(Stream inputStream, Stream outputStream)
+		public virtual void Start()
 		{
-			_outputStream = outputStream;
-
 			byte[] buffer = new byte[BUFFER_SIZE];
 
-			_stopRequested = false;
-
 			Task.Run(() => {
-				try
-				{
-					while (!_stopRequested)
-					{
+				try {
+					while (true) {
+						CancellationToken.ThrowIfCancellationRequested();
+						var read = _inputStream.Read(buffer, 0, buffer.Length);
 
-						var read = inputStream.Read(buffer, 0, buffer.Length);
-
-						if (read == 0)
-						{
+						if (read == 0) {
 							// end of stream
 							break;
 						}
 
-						if (read > 0)
-						{
+						if (read > 0) {
 							_rawData.Append(buffer, read);
 							ProcessData();
 						}
 					}
 
 				}
-				catch (Exception e)
-				{
+				catch (OperationCanceledException) {
+					throw;
+				}
+				catch (Exception e) {
 					OnReceiveException(new ThreadExceptionEventArgs(e));
 				}
-			});
+			}, CancellationToken);
 		}
 
 		public void Stop()

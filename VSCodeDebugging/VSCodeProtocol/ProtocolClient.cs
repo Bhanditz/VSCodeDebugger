@@ -112,18 +112,22 @@ namespace VSCodeDebugging.VSCodeProtocol
 		bool _insideSyncRequest = false;
 		int _pollerThreadId = -1;
 
-		public override void Start(Stream inputStream, Stream outputStream)
+		public ProtocolClient(Stream inputStream, Stream outputStream, CancellationToken cancellationToken) : base(inputStream, outputStream, cancellationToken)
 		{
-			base.Start(inputStream, outputStream);
-			Task.Run(() => QueuePoller());
 		}
 
-		void QueuePoller()
+		public override void Start()
+		{
+			base.Start();
+			Task.Run(() => QueuePoller(CancellationToken), CancellationToken);
+		}
+
+		void QueuePoller(CancellationToken cancellationToken)
 		{
 			_pollerThreadId = SystemThread.CurrentThread.ManagedThreadId;
 			while (true)
 			{
-				var protocolMessage = _messageQueue.Take();
+				var protocolMessage = _messageQueue.Take(cancellationToken);
 
 				if (protocolMessage is Response)
 				{
@@ -246,7 +250,9 @@ namespace VSCodeDebugging.VSCodeProtocol
 			{
 				return SendRequestSyncInternal(request);
 			}
-			return SendRequestAsync(request).Result;
+			var task = SendRequestAsync(request);
+			task.Wait(CancellationToken);
+			return task.Result;
 		}
 
 		/// <summary>
@@ -263,5 +269,6 @@ namespace VSCodeDebugging.VSCodeProtocol
 			SendMessage(request);
 			return request.WaitingResponse.Task;
 		}
+
 	}
 }
