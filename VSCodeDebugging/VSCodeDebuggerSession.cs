@@ -407,6 +407,10 @@ namespace VSCodeDebugging
 			if (!string.IsNullOrEmpty(debuggerAgentParameters.DebuggerEngineLogFilePath)) {
 				startInfo.Arguments = $"--trace=response --engineLogging='{debuggerAgentParameters.DebuggerEngineLogFilePath}'";
 			}
+			if (!string.IsNullOrEmpty(debuggerAgentParameters.DotNetCliLocation)) {
+				startInfo.EnvironmentVariables["PATH"] = debuggerAgentParameters.DotNetCliLocation + Path.PathSeparator +
+														startInfo.EnvironmentVariables["PATH"];
+			}
 			debugAgentProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true};
 			var cancellationTokenSource = new CancellationTokenSource();
 			debugAgentProcess.Exited += (sender, args) =>
