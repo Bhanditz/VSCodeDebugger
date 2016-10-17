@@ -201,6 +201,27 @@ namespace VSCodeDebugging
 
 		void HandleEvent(EventBody eventBody)
 		{
+			if (eventBody is OutputEventBody) {
+				var outputEventBody = (OutputEventBody) eventBody;
+				switch (outputEventBody.category) {
+					case "telemetry":
+						OnDebuggerOutput(false, string.Format("{0}: {1} {2}", outputEventBody.category, outputEventBody.output, outputEventBody.data).Trim());
+						break;
+					case "stdout":
+						if (outputEventBody.output != null)
+							OnTargetOutput(false, outputEventBody.output);
+						break;
+					case "stderr":
+						if (outputEventBody.output != null)
+							OnTargetOutput(true, outputEventBody.output);
+						break;
+					case "console":
+					default:
+						if (outputEventBody.output != null)
+							OnTargetDebug(-1, "", outputEventBody.output);
+						break;
+				}				
+			}
 			if (eventBody is InitializedEventBody)
 			{
 				//OnStarted();
@@ -430,14 +451,14 @@ namespace VSCodeDebugging
 
 			StartDebugAgent();
 			var cwd = string.IsNullOrWhiteSpace(startInfo.WorkingDirectory) ? Path.GetDirectoryName(startInfo.Command) : startInfo.WorkingDirectory;
-			var dotnetCommand = vsCodeDebuggerStartInfo.DotNetCliPath ?? (PlatformUtil.IsWindows ? "dotnet.exe" : "dotnet");
+			//var dotnetCommand = vsCodeDebuggerStartInfo.DotNetCliPath ?? (PlatformUtil.IsWindows ? "dotnet.exe" : "dotnet");
 			var launchRequestArguments = new LaunchRequestArguments {
 				Name = ".NET Core Launch (console)",
 				Type = "coreclr",
 				Request = "launch",
-				Program = dotnetCommand,
+				Program = startInfo.Command,
 				// first param is an assembly, then its params go
-				Args = new object[] { $"\"{startInfo.Command}\"", vsCodeDebuggerStartInfo.Arguments },
+				Args = ParametersUtil.ReadArgs(startInfo.Arguments).Cast<object>().ToArray(),
 				Cwd = cwd,
 				NoDebug = false,
 				StopAtEntry = vsCodeDebuggerStartInfo.StopAtEntry,

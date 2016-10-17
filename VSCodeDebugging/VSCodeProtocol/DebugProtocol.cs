@@ -735,8 +735,11 @@ namespace VSCodeDebugging.VSCodeProtocol
 
 	public class OutputEventBody : EventBody
 	{
+		/** The output to report. */
 		public string output { get; set; }
+		/** The category of output (such as: 'console', 'stdout', 'stderr', 'telemetry'). If not specified, 'console' is assumed. */
 		public string category { get; set; }
+		/** Optional data to report. For the 'telemetry' category the data will be sent to telemetry, for the other categories the data is shown in JSON format. */
 		public object data { get; set; }
 	}
 
