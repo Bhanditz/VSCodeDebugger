@@ -16,5 +16,9 @@
 		<dependencies>
 			<dependency id="ICSharpCode.NRefactory" version="[5.5.1]"/>
 		</dependencies>
+		
 	</metadata>
+	<files>
+		<file src="_._" target="lib\net40\" />
+	</files>
 </package>
