@@ -287,7 +287,7 @@ namespace VSCodeDebugging
 						args = new TargetEventArgs(TargetEventType.TargetStopped);
 						break;
 					case "exception":
-						args = new TargetEventArgs(TargetEventType.ExceptionThrown);
+						args = new TargetEventArgs(TargetEventType.UnhandledException);
 						break;
 					default:
 						throw new NotImplementedException(stoppedEvent.reason);
