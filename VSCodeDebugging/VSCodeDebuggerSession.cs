@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using ICSharpCode.NRefactory.TypeSystem.Implementation;
 using Mono.Debugging.Client;
 using VSCodeDebugging.VSCodeProtocol;
 using Breakpoint = Mono.Debugging.Client.Breakpoint;
@@ -15,6 +16,8 @@ namespace VSCodeDebugging
 	public class VSCodeDebuggerSession : DebuggerSession
 	{
 		private readonly VSCodeDebuggerAgentParameters debuggerAgentParameters;
+
+		private List<Breakpoint> runToCursorBreakpoints = new List<Breakpoint>();
 
 		public VSCodeDebuggerSession(VSCodeDebuggerAgentParameters debuggerAgentParameters)
 		{
@@ -510,6 +513,23 @@ namespace VSCodeDebugging
 			ProtocolClient.SendRequestAsync(new PauseRequest(new PauseRequestArguments {
 				threadId = currentThreadId
 			}));
+		}
+
+		public override void RemoveRunToCursorBreakpoints()
+		{
+			foreach (var breakpoint in runToCursorBreakpoints)
+			{
+				Breakpoints.Remove(breakpoint);
+			}
+
+			runToCursorBreakpoints = new List<Breakpoint>();
+		}
+
+		public override void InsertRunToCursorBreakpoint(string fileName, int line, int column)
+		{
+			var breakpoint = new Breakpoint(fileName, line, column);
+			runToCursorBreakpoints.Add(breakpoint);
+			Breakpoints.Add(breakpoint);
 		}
 	}
 }
