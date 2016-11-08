@@ -515,7 +515,7 @@ namespace VSCodeDebugging
 			}));
 		}
 
-		public override void RemoveRunToCursorBreakpoints()
+		protected override void OnRemoveRunToCursorBreakpoints()
 		{
 			foreach (var breakpoint in runToCursorBreakpoints)
 			{
@@ -525,7 +525,7 @@ namespace VSCodeDebugging
 			runToCursorBreakpoints = new List<Breakpoint>();
 		}
 
-		public override void InsertRunToCursorBreakpoint(string fileName, int line, int column)
+		protected override void OnInsertRunToCursorBreakpoint(string fileName, int line, int column)
 		{
 			var breakpoint = new Breakpoint(fileName, line, column);
 			runToCursorBreakpoints.Add(breakpoint);
