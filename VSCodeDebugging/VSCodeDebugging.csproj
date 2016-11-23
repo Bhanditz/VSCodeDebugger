@@ -74,7 +74,7 @@
       <HintPath>$(SolutionDir)\packages\Mono.Cecil.0.9.6.1\lib\net45\Mono.Cecil.Rocks.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Debugging, Version=1.0.0.6, Culture=neutral, PublicKeyToken=5e9ce85b0923c84f">
-      <HintPath>..\packages\Mono.Debugging.1.0.20161107.52\lib\net40\Mono.Debugging.dll</HintPath>
+      <HintPath>..\packages\Mono.Debugging.1.0.20161123.56\lib\net40\Mono.Debugging.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=6.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed">
       <HintPath>..\Packages\Newtonsoft.Json.6.0.4\lib\net45\Newtonsoft.Json.dll</HintPath>
