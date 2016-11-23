@@ -281,6 +281,27 @@ namespace VSCodeDebugging
 								{
 									suitableBreakpoint = breakpointAtLine.FirstOrDefault(b => b.Column == stoppedEvent.column.Value) ?? suitableBreakpoint;
 								}
+
+								if (suitableBreakpoint != null)
+								{
+									if ((suitableBreakpoint.HitAction & HitAction.PrintTrace) != HitAction.None)
+									{
+										OnTargetDebug (0, "", "Breakpoint reached: " + suitableBreakpoint.FileName + ":" + suitableBreakpoint.Line + Environment.NewLine);
+									}
+
+									if ((suitableBreakpoint.HitAction & HitAction.PrintExpression) != HitAction.None)
+									{
+										var traceExpression = EvaluateTrace(GetThread(OnGetProcesses()[0], stoppedEvent.threadId), suitableBreakpoint.TraceExpression);
+										OnTargetDebug (0, "", traceExpression + Environment.NewLine);
+									}
+
+									if ((suitableBreakpoint.HitAction & HitAction.Break) == HitAction.None)
+									{
+										Continue();
+										return;
+									}
+								}
+
 								args.BreakEvent = suitableBreakpoint;
 							}
 						}
@@ -316,6 +337,38 @@ namespace VSCodeDebugging
 			{
 				debugAgentProcess.Kill();
 			}
+		}
+
+		string EvaluateTrace(ThreadInfo threadInfo, string exp)
+		{
+			StringBuilder sb = new StringBuilder();
+			int last = 0;
+			int i = exp.IndexOf('{');
+			while (i != -1) {
+				if (i < exp.Length - 1 && exp [i+1] == '{') {
+					sb.Append(exp.Substring(last, i - last + 1));
+					last = i + 2;
+					i = exp.IndexOf('{', i + 2);
+					continue;
+				}
+				int j = exp.IndexOf('}', i + 1);
+				if (j == -1)
+					break;
+				string expressionToEvaluate = exp.Substring (i + 1, j - i - 1);
+				var vsCodeBacktrace = new VSCodeDebuggerBacktrace(this, threadInfo.Id);
+				var frames = vsCodeBacktrace.GetStackFrames(0, 1);
+
+				if (frames.Length == 0)
+					return "";
+				var objectValues = vsCodeBacktrace.GetExpressionValues(frames[0].Index,
+					new[] {expressionToEvaluate}, EvaluationOptions);
+				sb.Append (exp.Substring (last, i - last));
+				sb.Append (objectValues[0].Value);
+				last = j + 1;
+				i = exp.IndexOf ('{', last);
+			}
+			sb.Append (exp.Substring (last, exp.Length - last));
+			return sb.ToString ();
 		}
 
 		ThreadInfo GetThread(ProcessInfo process, long threadId)
