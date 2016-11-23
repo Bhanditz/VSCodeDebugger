@@ -286,13 +286,13 @@ namespace VSCodeDebugging
 								{
 									if ((suitableBreakpoint.HitAction & HitAction.PrintTrace) != HitAction.None)
 									{
-										OnTargetDebug (0, "", "Breakpoint reached: " + suitableBreakpoint.FileName + ":" + suitableBreakpoint.Line + Environment.NewLine);
+										OnTargetDebug(0, "", "Breakpoint reached: " + suitableBreakpoint.FileName + ":" + suitableBreakpoint.Line + Environment.NewLine);
 									}
 
 									if ((suitableBreakpoint.HitAction & HitAction.PrintExpression) != HitAction.None)
 									{
 										var traceExpression = EvaluateTrace(GetThread(OnGetProcesses()[0], stoppedEvent.threadId), suitableBreakpoint.TraceExpression);
-										OnTargetDebug (0, "", traceExpression + Environment.NewLine);
+										OnTargetDebug(0, "", traceExpression + Environment.NewLine);
 									}
 
 									if ((suitableBreakpoint.HitAction & HitAction.Break) == HitAction.None)
@@ -354,7 +354,7 @@ namespace VSCodeDebugging
 				int j = exp.IndexOf('}', i + 1);
 				if (j == -1)
 					break;
-				string expressionToEvaluate = exp.Substring (i + 1, j - i - 1);
+				string expressionToEvaluate = exp.Substring(i + 1, j - i - 1);
 				var vsCodeBacktrace = new VSCodeDebuggerBacktrace(this, threadInfo.Id);
 				var frames = vsCodeBacktrace.GetStackFrames(0, 1);
 
@@ -362,13 +362,13 @@ namespace VSCodeDebugging
 					return "";
 				var objectValues = vsCodeBacktrace.GetExpressionValues(frames[0].Index,
 					new[] {expressionToEvaluate}, EvaluationOptions);
-				sb.Append (exp.Substring (last, i - last));
-				sb.Append (objectValues[0].Value);
+				sb.Append(exp.Substring(last, i - last));
+				sb.Append(objectValues[0].Value);
 				last = j + 1;
-				i = exp.IndexOf ('{', last);
+				i = exp.IndexOf('{', last);
 			}
-			sb.Append (exp.Substring (last, exp.Length - last));
-			return sb.ToString ();
+			sb.Append(exp.Substring(last, exp.Length - last));
+			return sb.ToString();
 		}
 
 		ThreadInfo GetThread(ProcessInfo process, long threadId)
