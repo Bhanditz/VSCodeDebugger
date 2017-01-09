@@ -151,11 +151,10 @@ namespace VSCodeDebugging
 
 		void UpdateExceptions()
 		{
-			// TODO
-//			var catchpoints = Breakpoints.GetCatchpoints().Where(catchpoint => catchpoint.Enabled);
-//			protocolClient.SendRequestAsync(new SetExceptionBreakpointsRequest(new SetExceptionBreakpointsArguments {
-//				filters = Capabilities.exceptionBreakpointFilters.Where(f => hasCustomExceptions || (f.Default ?? false)).Select(f => f.Filter).ToArray()
-//			}));
+			var hasCustomExceptions = Breakpoints.GetCatchpoints().Any(catchpoint => catchpoint.Enabled);
+			ProtocolClient.SendRequestAsync(new SetExceptionBreakpointsRequest(new SetExceptionBreakpointsArguments {
+				filters = Capabilities.exceptionBreakpointFilters.Where(f => hasCustomExceptions || f.@default).Select(f => f.filter).ToArray()
+			}));
 		}
 
 		protected override void OnNextInstruction()
