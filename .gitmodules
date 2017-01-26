@@ -1,0 +1,8 @@
+[submodule "debugger-libs"]
+	path = debugger-libs
+	url = https://github.com/JetBrains/debugger-libs.git
+	branch = rider-new
+[submodule "nrefactory"]
+	path = nrefactory
+	url = git://github.com/icsharpcode/NRefactory.git
+	branch = 5.5.1-42-ga2b55de35
