@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
 using Mono.Debugging.Client;
 using VSCodeDebugging.VSCodeProtocol;
 using Breakpoint = Mono.Debugging.Client.Breakpoint;
@@ -16,8 +16,6 @@ namespace VSCodeDebugging
 	public class VSCodeDebuggerSession : DebuggerSession
 	{
 		private readonly VSCodeDebuggerAgentParameters debuggerAgentParameters;
-
-		private List<Breakpoint> runToCursorBreakpoints = new List<Breakpoint>();
 
 		public VSCodeDebuggerSession(VSCodeDebuggerAgentParameters debuggerAgentParameters)
 		{
@@ -274,7 +272,8 @@ namespace VSCodeDebugging
 							}
 							else
 							{
-								var breakpointAtLine = Breakpoints.GetBreakpointsAtFileLine(sourcePath, stoppedEvent.line.Value);
+								var breakpointAtLine = Breakpoints.GetBreakpointsAtFileLine(sourcePath, stoppedEvent.line.Value).ToList();
+								breakpointAtLine.AddRange(GetRunToCursorBreakpointsAtFile(sourcePath, stoppedEvent.line.Value));
 								var suitableBreakpoint = breakpointAtLine.FirstOrDefault();
 								if (stoppedEvent.column != null)
 								{
@@ -379,9 +378,38 @@ namespace VSCodeDebugging
 			return null;
 		}
 
+		public ReadOnlyCollection<Breakpoint> GetRunToCursorBreakpointsAtFile(string filename, int line = -1)
+		{
+			if (filename == null)
+				throw new ArgumentNullException ("filename");
+
+			var list = new List<Breakpoint> ();
+			if (string.IsNullOrEmpty (filename))
+				return list.AsReadOnly ();
+
+			try {
+				filename = Path.GetFullPath (filename);
+			} catch {
+				return list.AsReadOnly ();
+			}
+
+			foreach (var bp in Breakpoints.OfType<RunToCursorBreakpoint> ()) {
+				if (BreakpointStore.FileNameEquals(bp.FileName, filename)) {
+					if (line != -1 && !(bp.OriginalLine == line || bp.Line == line))
+						continue;
+					list.Add(bp);
+				}
+			}
+
+			return list.AsReadOnly ();
+		}
+
 		void UpdatePositionalBreakpoints(string filename)
 		{
 			var allFileBreakpoints = Breakpoints.GetBreakpointsAtFile(filename).ToList();
+
+			allFileBreakpoints.AddRange(GetRunToCursorBreakpointsAtFile(filename));
+
 			var activeFileBreakpoints = allFileBreakpoints.Where(bp => bp.Enabled).ToList();
 			ProtocolClient.SendRequestAsync(new SetBreakpointsRequest(new SetBreakpointsRequestArguments
 			{
@@ -565,23 +593,6 @@ namespace VSCodeDebugging
 			ProtocolClient.SendRequestAsync(new PauseRequest(new PauseRequestArguments {
 				threadId = currentThreadId
 			}));
-		}
-
-		protected override void OnRemoveRunToCursorBreakpoints()
-		{
-			foreach (var breakpoint in runToCursorBreakpoints)
-			{
-				Breakpoints.Remove(breakpoint);
-			}
-
-			runToCursorBreakpoints = new List<Breakpoint>();
-		}
-
-		protected override void OnInsertRunToCursorBreakpoint(string fileName, int line, int column)
-		{
-			var breakpoint = new Breakpoint(fileName, line, column);
-			runToCursorBreakpoints.Add(breakpoint);
-			Breakpoints.Add(breakpoint);
 		}
 	}
 }
