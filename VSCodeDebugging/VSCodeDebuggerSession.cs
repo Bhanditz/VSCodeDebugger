@@ -298,6 +298,22 @@ namespace VSCodeDebugging
 										Continue();
 										return;
 									}
+
+									lock (breakpointsSync)
+									{
+										BreakEventInfo info;
+										if (!breakEventToInfo.TryGetValue(suitableBreakpoint, out info)) {
+											OnDebuggerOutput(false,
+												string.Format("No break event for breakpoint {0}", suitableBreakpoint));
+											return;
+										}
+										info.IncrementHitCount();
+										if (!info.HitCountReached)
+										{
+											Continue();
+											return;
+										}
+									}
 								}
 
 								args.BreakEvent = suitableBreakpoint;
