@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using Mono.Debugging.Client;
+using Mono.Debugging.Evaluation;
 using VSCodeDebugging.VSCodeProtocol;
 using Breakpoint = Mono.Debugging.Client.Breakpoint;
 using VSBreakpoint = VSCodeDebugging.VSCodeProtocol.Breakpoint;
@@ -199,6 +200,23 @@ namespace VSCodeDebugging
 			return new Backtrace(new VSCodeDebuggerBacktrace(this, threadId));
 		}
 
+		private ObjectValue EvaluateExpression(int threadId, string expressionToEvaluate)
+		{
+			var threadInfo = GetThread(OnGetProcesses()[0], threadId);
+			var vsCodeBacktrace = new VSCodeDebuggerBacktrace(this, threadInfo.Id);
+			var frames = vsCodeBacktrace.GetStackFrames(0, 1);
+
+			if (frames.Length == 0)
+				throw new EvaluatorException("Frame list is empty when try to compute value of " + expressionToEvaluate);
+			var objectValues = vsCodeBacktrace.GetExpressionValues(frames[0].Index,
+				new[] {expressionToEvaluate}, EvaluationOptions);
+
+			if (objectValues.Length != 1)
+				throw new EvaluatorException(string.Format("Failed to evaluate {0}, "+
+				                                           "backtrace returned nothing", expressionToEvaluate));
+			return objectValues.First();
+		}
+
 		void HandleEvent(EventBody eventBody)
 		{
 			if (eventBody is OutputEventBody) {
@@ -282,6 +300,33 @@ namespace VSCodeDebugging
 
 								if (suitableBreakpoint != null)
 								{
+									if (!string.IsNullOrEmpty (suitableBreakpoint.ConditionExpression)) {
+										try {
+											var objectValue = EvaluateExpression(stoppedEvent.threadId, suitableBreakpoint.ConditionExpression);
+											var conditionResult = objectValue.Value;
+											if (suitableBreakpoint.BreakIfConditionChanges) {
+												if (conditionResult == suitableBreakpoint.LastConditionValue) {
+													Continue();
+													return;
+												}
+												suitableBreakpoint.LastConditionValue =
+													suitableBreakpoint.LastConditionValue = conditionResult;
+											}
+											else {
+												if (conditionResult != null && conditionResult.ToLower() != "true") {
+													Continue();
+													return;
+												}
+											}
+										}
+										catch (Exception ex)
+										{
+											OnDebuggerOutput(false, ex.Message);
+											Continue();
+											return;
+										}
+									}
+
 									if ((suitableBreakpoint.HitAction & HitAction.PrintTrace) != HitAction.None)
 									{
 										OnTargetDebug(0, "", "Breakpoint reached: " + suitableBreakpoint.FileName + ":" + suitableBreakpoint.Line + Environment.NewLine);
