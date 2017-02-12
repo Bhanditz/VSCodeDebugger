@@ -24,9 +24,19 @@ namespace VSCodeDebugging
 		}
 
 		long currentThreadId;
+
 		protected override void OnAttachToProcess(long processId)
 		{
-			throw new NotImplementedException();
+			StartDebugAgent();
+
+			ProtocolClient.SendRequestSync(new AttachRequest(new AttachRequestArguments {
+				Name = ".NET Core Attach",
+				Type = "coreclr",
+				Request = "attach",
+				ProcessId = processId
+			}));
+
+			OnStarted();
 		}
 
 		protected override void OnContinue()
@@ -40,7 +50,10 @@ namespace VSCodeDebugging
 		protected override void OnDetach()
 		{
 			// was sync
-			ProtocolClient.SendRequestAsync(new DisconnectRequest());
+			ProtocolClient.SendRequestAsync(new DisconnectRequest(new DisconnectRequestArguments()
+			{
+				Terminate = false
+			}));
 		}
 
 		protected override void OnUpdateBreakEvent(BreakEventInfo eventInfo)
@@ -68,7 +81,10 @@ namespace VSCodeDebugging
 		protected override void OnExit()
 		{
 			// was sync
-			ProtocolClient.SendRequestAsync(new DisconnectRequest());
+			ProtocolClient.SendRequestAsync(new DisconnectRequest(new DisconnectRequestArguments()
+			{
+				Terminate = true
+			}));
 		}
 
 		protected override void OnFinish()

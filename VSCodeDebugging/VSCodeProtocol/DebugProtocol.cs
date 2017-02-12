@@ -172,6 +172,30 @@ namespace VSCodeDebugging.VSCodeProtocol
 		public Dictionary<string, string> Env { get; set; }
 	}
 
+	public class AttachRequest : Request<AttachRequestArguments, ResponseBody>
+	{
+		public AttachRequest(AttachRequestArguments args)
+			: base("attach", args)
+		{
+
+		}
+	}
+
+	public class AttachRequestArguments
+	{
+
+		[JsonProperty("name")]
+		public string Name { get; set; }
+
+		[JsonProperty("type")]
+		public string Type { get; set; }
+
+		[JsonProperty("request")]
+		public string Request { get; set; }
+
+		[JsonProperty("processId")]
+		public long ProcessId { get; set; }
+	}
 	/** Next request; value of command field is "next".
 		The request starts the debuggee to run again for one step.
 		penDebug will respond with a StoppedEvent (event type 'step') after running the step.
@@ -379,10 +403,16 @@ namespace VSCodeDebugging.VSCodeProtocol
 	*/
 	public class DisconnectRequest : Request<object, ResponseBody>
 	{
-		public DisconnectRequest()
-			: base("disconnect", null)
+		public DisconnectRequest(DisconnectRequestArguments args)
+			: base("disconnect", args)
 		{
 		}
+	}
+
+	public class DisconnectRequestArguments
+	{
+		[JsonProperty("terminate")]
+		public bool Terminate { get; set; }
 	}
 
 	/** Scopes request; value of command field is "scopes".
