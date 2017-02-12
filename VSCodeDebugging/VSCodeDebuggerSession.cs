@@ -562,7 +562,8 @@ namespace VSCodeDebugging
 				RedirectStandardOutput = true,
 				RedirectStandardInput = true,
 				StandardOutputEncoding = Encoding.UTF8,
-				UseShellExecute = false
+				UseShellExecute = false,
+				CreateNoWindow = true
 			};
 			if (!string.IsNullOrEmpty(debuggerAgentParameters.DebuggerEngineLogFilePath)) {
 				startInfo.Arguments = $"--trace=response --engineLogging='{debuggerAgentParameters.DebuggerEngineLogFilePath}'";
